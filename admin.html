@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex, nofollow">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0A252A">
+<link rel="apple-touch-icon" href="icone-192.png">
 <title>Manutenção — Painel Administrativo</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -214,6 +217,9 @@
     <div class="nav-item" onclick="location.href='tv.html'">
       <span class="icon">📺</span> Painel TV
     </div>
+    <div class="nav-item" id="nav-notif" onclick="alternarNotificacao()" title="Receber aviso no celular quando abrir chamado">
+      <span class="icon" id="notif-icone">🔔</span> <span id="notif-texto">Notificações</span>
+    </div>
   </div>
   <div class="sidebar-footer">
     <div class="tecnico-info">
@@ -329,6 +335,7 @@
 import { collection, doc, updateDoc, query, orderBy, onSnapshot }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { db, pronto } from "./firebase.js";
+import { estadoNotificacao, ativarNotificacoes, desativarNotificacoes } from "./notificacoes.js";
 import { esc, fmtNome, mesAtual, idSeguro, prioClasse, hashSenha, hashConfere } from "./comum.js";
 
 if (!sessionStorage.getItem('manut_logged')) window.location.href = 'login.html';
@@ -732,6 +739,57 @@ function showToast(msg,type=''){
 
 function logout(){sessionStorage.removeItem('manut_logged');sessionStorage.removeItem('manut_tecnico');window.location.href='login.html';}
 window.logout=logout;
+
+// ---------------------------------------------------------------------------
+// Notificação no celular do técnico.
+// O botão muda de cara conforme o estado, porque "não aconteceu nada ao clicar"
+// é o pior resultado possível aqui — o técnico precisa saber se está valendo.
+// ---------------------------------------------------------------------------
+async function pintarBotaoNotificacao() {
+  const icone = document.getElementById('notif-icone');
+  const texto = document.getElementById('notif-texto');
+  const item  = document.getElementById('nav-notif');
+  switch (await estadoNotificacao()) {
+    case 'ativa':
+      icone.textContent = '🔔'; texto.textContent = 'Avisos ligados';
+      item.style.color = 'var(--accent)'; break;
+    case 'bloqueada':
+      icone.textContent = '🔕'; texto.textContent = 'Avisos bloqueados';
+      item.style.color = 'var(--text3)'; break;
+    case 'sem-suporte':
+      icone.textContent = '🔕'; texto.textContent = 'Avisos (abrir no Chrome)';
+      item.style.color = 'var(--text3)'; break;
+    default:
+      icone.textContent = '🔔'; texto.textContent = 'Ativar avisos';
+      item.style.color = ''; break;
+  }
+}
+
+async function alternarNotificacao() {
+  const estado = await estadoNotificacao();
+  if (estado === 'sem-suporte') {
+    showToast('Abra o sistema pelo Chrome e instale o app para receber avisos.', 'error');
+    return;
+  }
+  if (estado === 'bloqueada') {
+    showToast('Você bloqueou os avisos. Libere nas configurações do navegador.', 'error');
+    return;
+  }
+  try {
+    if (estado === 'ativa') {
+      await desativarNotificacoes();
+      showToast('Avisos desligados neste aparelho.');
+    } else {
+      await ativarNotificacoes(TECNICO);
+      showToast('✅ Avisos ligados! Você será avisado quando abrir chamado.');
+    }
+  } catch (e) {
+    showToast(e.message || 'Não foi possível mudar os avisos.', 'error');
+  }
+  pintarBotaoNotificacao();
+}
+window.alternarNotificacao = alternarNotificacao;
+pintarBotaoNotificacao();
 
 pronto.then(loadAll);
 </script>

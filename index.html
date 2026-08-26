@@ -252,6 +252,7 @@
 <script type="module">
 import { collection, addDoc, doc, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { db, pronto } from "./firebase.js";
+import { avisarChamadoNovo } from "./notificacoes.js";
 import { fmtNome, mesAtual } from "./comum.js";
 
 
@@ -341,7 +342,7 @@ document.getElementById('ticketForm').addEventListener('submit', async function(
   try {
     if (!await pronto) throw new Error('sem conexão com o servidor');
     const id = await proximoId();
-    await addDoc(collection(db, 'chamados'), {
+    const ref = await addDoc(collection(db, 'chamados'), {
       id, lider, setor, maquina,
       tipoProblema: tipoProblemaEl.value,
       observacao,
@@ -353,6 +354,9 @@ document.getElementById('ticketForm').addEventListener('submit', async function(
       tecnicoInicio: '', tecnicoFim: '',
       createdAt: serverTimestamp()
     });
+    // O chamado já está salvo: se o aviso falhar, não pode derrubar nada.
+    avisarChamadoNovo(ref.id);
+
     document.getElementById('toastId').textContent = 'ID: ' + id;
     const toast = document.getElementById('toast');
     toast.classList.add('show');

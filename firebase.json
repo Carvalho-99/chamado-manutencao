@@ -8,7 +8,8 @@
       "**/.*",
       "**/node_modules/**",
       "README.md",
-      "ferramentas/**"
+      "ferramentas/**",
+      "worker/**"
     ]
   },
   "firestore": {

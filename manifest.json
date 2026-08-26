@@ -1,0 +1,17 @@
+{
+  "name": "Chamados de Manutenção — Forest",
+  "short_name": "Manutenção",
+  "description": "Painel de chamados de manutenção da Forest Paper",
+  "start_url": "./login.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0A252A",
+  "theme_color": "#0A252A",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "icone-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icone-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icone-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

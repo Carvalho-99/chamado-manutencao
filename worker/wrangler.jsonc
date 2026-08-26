@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "chamados-push",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-01",
+  // A biblioteca de push cai em node:crypto como alternativa quando não existe
+  // WebCrypto global. No Worker existe, então esse caminho nunca roda — mas o
+  // empacotador precisa conseguir resolver o import.
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "vars": {
+    "PROJETO_FIREBASE": "chamado-manutencao",
+    // Chave pública do Firebase; a mesma que está no código-fonte do site.
+    "FIREBASE_API_KEY": "AIzaSyCPiAWJ5q8FqVTqJ8NUgyFYqUtktqMmt94",
+    "VAPID_SUBJECT": "mailto:ti@forest.ind.br",
+    "VAPID_PUBLICA": "BGETvLQyilxoV8ynkRrlT9UT2SjHhjd8X5N9Fvbv_muuiwPjmRCurMGDWt3x6t8q3TdKlg7CIfaQl29ihgdukuM"
+  }
+  // VAPID_PRIVADA entra como secret:  wrangler secret put VAPID_PRIVADA
+  // KV entra depois de criado:        wrangler kv namespace create INSCRICOES
+}
