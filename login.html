@@ -190,20 +190,11 @@
   window.login = login;
 </script>
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, collection, query, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { collection, query, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { db, pronto } from "./firebase.js";
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyCPiAWJ5q8FqVTqJ8NUgyFYqUtktqMmt94",
-    authDomain: "chamado-manutencao.firebaseapp.com",
-    projectId: "chamado-manutencao",
-    storageBucket: "chamado-manutencao.firebasestorage.app",
-    messagingSenderId: "329198000958",
-    appId: "1:329198000958:web:05c31243c0ecb11c25ea6f"
-  };
-  const app = initializeApp(firebaseConfig);
-  const db  = getFirestore(app);
 
+  pronto.then(() => {
   const q = query(collection(db, 'chamados'));
   onSnapshot(q, (snap) => {
     const tickets = snap.docs.map(d => d.data());
@@ -219,6 +210,7 @@
     if (andamento) partes.push(andamento + ' em andamento');
     badge.innerHTML = '<span class="pending-dot"></span>' + partes.join(' · ');
     badge.classList.add('show');
+  });
   });
 </script>
 </body>

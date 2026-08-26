@@ -249,21 +249,11 @@
 <footer>Manutenção © 2026 — Sistema interno de gestão de chamados</footer>
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, addDoc, doc, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { collection, addDoc, doc, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { db, pronto } from "./firebase.js";
 import { fmtNome, mesAtual } from "./comum.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyCPiAWJ5q8FqVTqJ8NUgyFYqUtktqMmt94",
-  authDomain: "chamado-manutencao.firebaseapp.com",
-  projectId: "chamado-manutencao",
-  storageBucket: "chamado-manutencao.firebasestorage.app",
-  messagingSenderId: "329198000958",
-  appId: "1:329198000958:web:05c31243c0ecb11c25ea6f"
-};
 
-const app = initializeApp(firebaseConfig);
-const db  = getFirestore(app);
 
 const LIDER = sessionStorage.getItem('lider_nome') || '';
 
@@ -348,6 +338,7 @@ document.getElementById('ticketForm').addEventListener('submit', async function(
   btn.disabled = true;
   btn.innerHTML = '⏳ Enviando...';
   try {
+    if (!await pronto) throw new Error('sem conexão com o servidor');
     const id = await proximoId();
     await addDoc(collection(db, 'chamados'), {
       id, lider, setor, maquina,

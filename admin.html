@@ -322,25 +322,16 @@
 <div class="toast" id="toast"></div>
 
 <script type="module">
-import { initializeApp }   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, doc, updateDoc, query, orderBy, onSnapshot }
+import { collection, doc, updateDoc, query, orderBy, onSnapshot }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { db, pronto } from "./firebase.js";
 import { esc, fmtNome, mesAtual, idSeguro, prioClasse, hashSenha, hashConfere } from "./comum.js";
 
 if (!sessionStorage.getItem('manut_logged')) window.location.href = 'login.html';
 const TECNICO = sessionStorage.getItem('manut_tecnico') || 'Manutenção';
 document.getElementById('tecnicoNome').innerHTML = fmtNome(TECNICO);
 
-const firebaseConfig = {
-  apiKey: "AIzaSyCPiAWJ5q8FqVTqJ8NUgyFYqUtktqMmt94",
-  authDomain: "chamado-manutencao.firebaseapp.com",
-  projectId: "chamado-manutencao",
-  storageBucket: "chamado-manutencao.firebasestorage.app",
-  messagingSenderId: "329198000958",
-  appId: "1:329198000958:web:05c31243c0ecb11c25ea6f"
-};
-const app = initializeApp(firebaseConfig);
-const db  = getFirestore(app);
+
 
 let allTickets = [];
 let finalizingId = null;
@@ -738,7 +729,7 @@ function showToast(msg,type=''){
 function logout(){sessionStorage.removeItem('manut_logged');sessionStorage.removeItem('manut_tecnico');window.location.href='login.html';}
 window.logout=logout;
 
-loadAll();
+pronto.then(loadAll);
 </script>
 </body>
 </html>

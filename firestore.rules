@@ -60,14 +60,13 @@ service cloud.firestore {
             && txtCheio(novo().dataCancelamento, 30);
       }
 
-      // TODO(auth): trocar por "request.auth != null" assim que o login anônimo
-      // for habilitado no console (Authentication > Sign-in method > Anônimo).
-      // Hoje a leitura é pública porque o projeto não tem Auth inicializado —
-      // fechar isto agora derrubaria a abertura de chamados no chão de fábrica.
-      allow read: if true;
+      // Toda operação exige uma sessão do Firebase. A sessão é anônima, então
+      // ela não diz QUEM é a pessoa — mas impede que alguém raspe ou escreva no
+      // banco direto pela API só com a chave que está no código-fonte da página.
+      allow read: if request.auth != null;
 
-      allow create: if
-             novo().keys().hasOnly(['id', 'lider', 'setor', 'maquina', 'tipoProblema',
+      allow create: if request.auth != null
+          && novo().keys().hasOnly(['id', 'lider', 'setor', 'maquina', 'tipoProblema',
                                     'observacao', 'prioridade', 'status', 'mes',
                                     'dataCriacao', 'dataInicio', 'dataFim',
                                     'tecnicoInicio', 'tecnicoFim', 'createdAt'])
@@ -90,7 +89,7 @@ service cloud.firestore {
           && novo().tecnicoFim    == ''
           && novo().createdAt     == request.time;
 
-      allow update: if iniciar() || finalizar() || cancelar();
+      allow update: if request.auth != null && (iniciar() || finalizar() || cancelar());
 
       // Chamado não se apaga. Histórico é o produto.
       allow delete: if false;
@@ -99,11 +98,13 @@ service cloud.firestore {
     // Contador do número sequencial do chamado (#0001, #0002, ...).
     // Só existe um documento aqui: contadores/chamados.
     match /contadores/{nome} {
-      allow read:   if true;
-      allow create: if request.resource.data.keys().hasOnly(['ultimo'])
+      allow read:   if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.data.keys().hasOnly(['ultimo'])
                     && request.resource.data.ultimo is int
                     && request.resource.data.ultimo >= 1;
-      allow update: if request.resource.data.keys().hasOnly(['ultimo'])
+      allow update: if request.auth != null
+                    && request.resource.data.keys().hasOnly(['ultimo'])
                     && request.resource.data.ultimo == resource.data.ultimo + 1;
       allow delete: if false;
     }
