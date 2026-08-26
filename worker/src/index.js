@@ -97,6 +97,15 @@ async function lerChamado(env, docId) {
 // ---------------------------------------------------------------------------
 const ROTULO_PRIORIDADE = { 1: '🔴 URGENTE', 2: '🟡 Crítico', 3: '🟢 Funcionando' };
 
+async function enviarPara(env, inscricao, mensagem) {
+  const payload = await buildPushPayload(mensagem, inscricao, {
+    subject: env.VAPID_SUBJECT,
+    publicKey: env.VAPID_PUBLICA,
+    privateKey: env.VAPID_PRIVADA
+  });
+  return fetch(inscricao.endpoint, payload);
+}
+
 async function dispararParaTodos(env, chamado) {
   const vapid = {
     subject: env.VAPID_SUBJECT,
@@ -210,6 +219,28 @@ export default {
       const resultado = await dispararParaTodos(env, chamado);
       console.log('notificado', chamado.id, JSON.stringify(resultado));
       return json({ ok: true, ...resultado }, 200, origem);
+    }
+
+    // Manda uma notificacao de teste APENAS pro aparelho que pediu.
+    // Serve pra pessoa confirmar na hora que a ativacao funcionou, sem precisar
+    // abrir um chamado de verdade so pra testar. Nao faz fan-out pro time.
+    if (url.pathname === '/testar') {
+      const chave = 'sub:' + await sha256hex(String(corpo.endpoint || ''));
+      const guardado = await env.INSCRICOES.get(chave, 'json');
+      if (!guardado) return json({ erro: 'aparelho nao inscrito' }, 404, origem);
+      try {
+        const r = await enviarPara(env, guardado.inscricao, {
+          data: {
+            titulo: '✅ Avisos ligados',
+            corpo: 'É assim que você vai ser avisado quando abrir um chamado.',
+            id: 'teste', prioridade: 3, url: './login.html'
+          },
+          options: { ttl: 60, urgency: 'high' }
+        });
+        return json({ ok: r.ok, status: r.status }, r.ok ? 200 : 502, origem);
+      } catch (e) {
+        return json({ erro: e.message }, 500, origem);
+      }
     }
 
     return json({ erro: 'rota desconhecida' }, 404, origem);

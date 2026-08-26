@@ -63,6 +63,14 @@ export async function ativarNotificacoes(tecnico) {
   });
   if (!resposta.ok) throw new Error('Não foi possível registrar no servidor de notificação.');
 
+  // Dispara na hora uma notificação de teste pro próprio aparelho. Assim a
+  // pessoa vê que funcionou de verdade, em vez de confiar num "ativado" na tela.
+  fetch(WORKER + '/testar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ endpoint: inscricao.endpoint })
+  }).catch(() => {});
+
   return true;
 }
 
