@@ -13,7 +13,7 @@
 const VAPID_PUBLICA = 'BGETvLQyilxoV8ynkRrlT9UT2SjHhjd8X5N9Fvbv_muuiwPjmRCurMGDWt3x6t8q3TdKlg7CIfaQl29ihgdukuM';
 
 // Endereço do Worker que envia os pushes. Preenchido no deploy.
-export const WORKER = 'https://chamados-push.tiforest.workers.dev';
+export const WORKER = 'https://chamados-push.chamados-push.workers.dev';
 
 const b64urlParaBytes = (b64) => {
   const pad = '='.repeat((4 - (b64.length % 4)) % 4);

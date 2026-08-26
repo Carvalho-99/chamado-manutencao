@@ -1,5 +1,8 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
+  // Conta cravada de propósito: com o ID aqui, um deploy não tem como cair
+  // na conta errada — nem hoje, nem daqui a seis meses, nem por engano.
+  "account_id": "ecc2e58aa45d10954dccbf42fd4d45ee",
   "name": "chamados-push",
   "main": "src/index.js",
   "compatibility_date": "2026-08-01",
@@ -18,7 +21,7 @@
   // Guarda os aparelhos inscritos e o controle de aviso duplicado.
   // Namespace próprio deste Worker — nada a ver com o KV_SEGURANCA dos outros projetos.
   "kv_namespaces": [
-    { "binding": "INSCRICOES", "id": "2e557d14735f4ae3965616acc40ac225" }
+    { "binding": "INSCRICOES", "id": "0588c528c93f4b9d911009ee46913be7" }
   ]
   // VAPID_PRIVADA entra como secret: wrangler secret put VAPID_PRIVADA
 }
