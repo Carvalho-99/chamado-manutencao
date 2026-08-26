@@ -14,7 +14,11 @@
     "FIREBASE_API_KEY": "AIzaSyCPiAWJ5q8FqVTqJ8NUgyFYqUtktqMmt94",
     "VAPID_SUBJECT": "mailto:ti@forest.ind.br",
     "VAPID_PUBLICA": "BGETvLQyilxoV8ynkRrlT9UT2SjHhjd8X5N9Fvbv_muuiwPjmRCurMGDWt3x6t8q3TdKlg7CIfaQl29ihgdukuM"
-  }
-  // VAPID_PRIVADA entra como secret:  wrangler secret put VAPID_PRIVADA
-  // KV entra depois de criado:        wrangler kv namespace create INSCRICOES
+  },
+  // Guarda os aparelhos inscritos e o controle de aviso duplicado.
+  // Namespace próprio deste Worker — nada a ver com o KV_SEGURANCA dos outros projetos.
+  "kv_namespaces": [
+    { "binding": "INSCRICOES", "id": "2e557d14735f4ae3965616acc40ac225" }
+  ]
+  // VAPID_PRIVADA entra como secret: wrangler secret put VAPID_PRIVADA
 }
