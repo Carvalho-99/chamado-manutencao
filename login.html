@@ -176,6 +176,11 @@
         return;
       }
       erro(MSG_ERRO_PADRAO);
+    } catch (e) {
+      // Tablet com WebView antigo pode não ter crypto.subtle. Sem isto o botão
+      // só voltava ao normal e nada acontecia — impossível de diagnosticar.
+      console.error(e);
+      erro('Não foi possível verificar a senha neste aparelho. Avise a TI.', 6000);
     } finally {
       verificando = false;
       btn.disabled = false;
