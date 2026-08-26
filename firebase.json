@@ -3,9 +3,15 @@
     "public": ".",
     "ignore": [
       "firebase.json",
+      "firestore.rules",
       ".git/**",
       "**/.*",
-      "**/node_modules/**"
+      "**/node_modules/**",
+      "README.md",
+      "ferramentas/**"
     ]
+  },
+  "firestore": {
+    "rules": "firestore.rules"
   }
 }

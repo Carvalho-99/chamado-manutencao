@@ -1,0 +1,116 @@
+rules_version = '2';
+
+// Regras do banco de chamados de manutenção.
+//
+// Princípio: o navegador é território hostil. Qualquer pessoa consegue a chave
+// de API lendo o código-fonte da página, então o que protege os dados é ESTE
+// arquivo, não o JavaScript da tela.
+//
+// O que está garantido aqui:
+//   - ninguém apaga chamado (cancelar vira status, o registro fica)
+//   - ninguém reescreve um chamado já aberto (líder, setor, observação, etc.)
+//   - só as transições de status previstas passam
+//   - o contador de IDs só anda pra frente, de 1 em 1
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function txt(v, max) {
+      return v is string && v.size() <= max;
+    }
+    function txtCheio(v, max) {
+      return txt(v, max) && v.size() > 0;
+    }
+
+    match /chamados/{chamadoId} {
+
+      function novo()  { return request.resource.data; }
+      function atual() { return resource.data; }
+
+      // Só estes campos podem mudar de um estado pro outro.
+      function mudouSo(campos) {
+        return novo().diff(atual()).affectedKeys().hasOnly(campos);
+      }
+
+      // Aberto -> Em andamento
+      function iniciar() {
+        return atual().status == 'Aberto'
+            && novo().status  == 'Em andamento'
+            && mudouSo(['status', 'dataInicio', 'tecnicoInicio'])
+            && txtCheio(novo().tecnicoInicio, 80)
+            && txtCheio(novo().dataInicio, 30);
+      }
+
+      // Em andamento -> Finalizado
+      function finalizar() {
+        return atual().status == 'Em andamento'
+            && novo().status  == 'Finalizado'
+            && mudouSo(['status', 'dataFim', 'tecnicoFim', 'solucao'])
+            && txtCheio(novo().tecnicoFim, 80)
+            && txtCheio(novo().dataFim, 30)
+            && txtCheio(novo().solucao, 1000);
+      }
+
+      // Aberto | Em andamento -> Cancelado (nunca apaga de verdade)
+      function cancelar() {
+        return atual().status in ['Aberto', 'Em andamento']
+            && novo().status  == 'Cancelado'
+            && mudouSo(['status', 'dataCancelamento', 'canceladoPor'])
+            && txtCheio(novo().canceladoPor, 80)
+            && txtCheio(novo().dataCancelamento, 30);
+      }
+
+      // TODO(auth): trocar por "request.auth != null" assim que o login anônimo
+      // for habilitado no console (Authentication > Sign-in method > Anônimo).
+      // Hoje a leitura é pública porque o projeto não tem Auth inicializado —
+      // fechar isto agora derrubaria a abertura de chamados no chão de fábrica.
+      allow read: if true;
+
+      allow create: if
+             novo().keys().hasOnly(['id', 'lider', 'setor', 'maquina', 'tipoProblema',
+                                    'observacao', 'prioridade', 'status', 'mes',
+                                    'dataCriacao', 'dataInicio', 'dataFim',
+                                    'tecnicoInicio', 'tecnicoFim', 'createdAt'])
+          && novo().keys().hasAll(['id', 'lider', 'setor', 'maquina', 'tipoProblema',
+                                   'observacao', 'prioridade', 'status', 'mes',
+                                   'dataCriacao', 'createdAt'])
+          && txtCheio(novo().id, 12)
+          && txtCheio(novo().lider, 80)
+          && txtCheio(novo().setor, 60)
+          && txtCheio(novo().maquina, 80)
+          && txtCheio(novo().tipoProblema, 20)
+          && txtCheio(novo().observacao, 1000)
+          && novo().prioridade in [1, 2, 3]
+          && novo().status == 'Aberto'
+          && txtCheio(novo().mes, 7)
+          && txtCheio(novo().dataCriacao, 30)
+          && novo().dataInicio    == null
+          && novo().dataFim       == null
+          && novo().tecnicoInicio == ''
+          && novo().tecnicoFim    == ''
+          && novo().createdAt     == request.time;
+
+      allow update: if iniciar() || finalizar() || cancelar();
+
+      // Chamado não se apaga. Histórico é o produto.
+      allow delete: if false;
+    }
+
+    // Contador do número sequencial do chamado (#0001, #0002, ...).
+    // Só existe um documento aqui: contadores/chamados.
+    match /contadores/{nome} {
+      allow read:   if true;
+      allow create: if request.resource.data.keys().hasOnly(['ultimo'])
+                    && request.resource.data.ultimo is int
+                    && request.resource.data.ultimo >= 1;
+      allow update: if request.resource.data.keys().hasOnly(['ultimo'])
+                    && request.resource.data.ultimo == resource.data.ultimo + 1;
+      allow delete: if false;
+    }
+
+    // Qualquer outra coleção: fechada.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

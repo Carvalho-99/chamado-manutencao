@@ -250,7 +250,8 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, addDoc, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, doc, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { fmtNome, mesAtual } from "./comum.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCPiAWJ5q8FqVTqJ8NUgyFYqUtktqMmt94",
@@ -265,11 +266,6 @@ const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 
 const LIDER = sessionStorage.getItem('lider_nome') || '';
-function fmtNome(nome) {
-  if (!nome) return '—';
-  const m = nome.match(/^(.*) \(externo\)$/i);
-  return m ? `${m[1]} <span style="color:var(--text3);font-weight:400">(externo)</span>` : nome;
-}
 
 document.getElementById('liderNomeDisplay').innerHTML = fmtNome(LIDER);
 
@@ -314,14 +310,22 @@ maquinaSel.addEventListener('change', () => {
   maquinaOutro.style.display = maquinaSel.value === 'Outro' ? 'block' : 'none';
 });
 
-function getCurrentMonth() {
-  const now = new Date();
-  return `${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
-}
-
-async function generateId() {
-  const snap = await getDocs(collection(db, 'chamados'));
-  return '#' + String(snap.size + 1).padStart(4, '0');
+// Número do chamado.
+//
+// Antes isto era "quantidade de documentos + 1", o que repetia número sempre que
+// um chamado era cancelado e podia dar o mesmo número pra dois líderes enviando
+// ao mesmo tempo — além de baixar a coleção inteira a cada abertura.
+// Agora é um contador dedicado, incrementado dentro de uma transação.
+async function proximoId() {
+  const ref = doc(db, 'contadores', 'chamados');
+  const n = await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    const proximo = (snap.exists() ? snap.data().ultimo : 0) + 1;
+    if (snap.exists()) tx.update(ref, { ultimo: proximo });
+    else               tx.set(ref, { ultimo: proximo });
+    return proximo;
+  });
+  return '#' + String(n).padStart(4, '0');
 }
 
 document.getElementById('ticketForm').addEventListener('submit', async function(e) {
@@ -344,14 +348,14 @@ document.getElementById('ticketForm').addEventListener('submit', async function(
   btn.disabled = true;
   btn.innerHTML = '⏳ Enviando...';
   try {
-    const id = await generateId();
+    const id = await proximoId();
     await addDoc(collection(db, 'chamados'), {
       id, lider, setor, maquina,
       tipoProblema: tipoProblemaEl.value,
       observacao,
       prioridade: Number(prioridadeEl.value),
       status: 'Aberto',
-      mes: getCurrentMonth(),
+      mes: mesAtual(),
       dataCriacao: new Date().toISOString(),
       dataInicio: null, dataFim: null,
       tecnicoInicio: '', tecnicoFim: '',

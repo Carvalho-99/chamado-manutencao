@@ -72,6 +72,7 @@
         <option>PAULO CUNHA</option>
         <option>PAULO HENRIQUE</option>
         <option>MARCIO ALMEIDA</option>
+        <option>ANTONIO SANTOS</option>
         <option value="Outros">Outros</option>
       </select>
     </div>
@@ -83,69 +84,94 @@
       <label>Senha</label>
       <input type="password" id="senha" placeholder="••••••••" autocomplete="current-password">
     </div>
-    <button class="btn-login" onclick="login()">Entrar e abrir chamado</button>
+    <button class="btn-login" id="btnEntrar" onclick="login()">Entrar e abrir chamado</button>
   </div>
 </div>
-<script>
-  document.addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+<script type="module">
+  import { hashSenha, hashConfere } from './comum.js';
 
-  const liderSel = document.getElementById('lider');
+  const liderSel      = document.getElementById('lider');
   const campoOutroNome = document.getElementById('campoOutroNome');
+  const btn           = document.getElementById('btnEntrar');
+
   liderSel.addEventListener('change', () => {
     campoOutroNome.style.display = liderSel.value === 'Outros' ? 'block' : 'none';
   });
 
-  // ==========================================================
-  // SENHAS DOS LÍDERES — mude aqui pra trocar a senha de cada um
-  // Senha = CPF da pessoa, só números (sem ponto/traço)
-  // ==========================================================
-  const USUARIOS = {
-    'FERNANDO BETIM':  '10983128905',
-    'SAMUEL LIMA':     '12818421926',
-    'JOVENIL SILVA':   '05965643926',
-    'ARGEU CARVALHO':  '02143035942',
-    'PAULO CUNHA':     '05923792990',
-    'PAULO HENRIQUE':  '10574946900',
-    'MARCIO ALMEIDA':  '02127331923'
-  };
+  document.addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
 
   // ==========================================================
-  // SENHA PADRÃO PRA QUEM CLICA EM "OUTROS" — mude aqui
+  // SENHAS DOS LÍDERES
+  // A senha continua sendo o CPF (só números), mas aqui fica guardado apenas o
+  // hash dele — o CPF não aparece mais no código-fonte da página.
+  // Pra cadastrar alguém novo:
+  //   node ferramentas/gerar-hash.js "NOME DA PESSOA" 00000000000
+  // e lembre de adicionar também o <option> com o nome no <select> acima.
   // ==========================================================
-  const SENHA_OUTROS = 'Forest@2026';
+  const USUARIOS = {
+    'FERNANDO BETIM':    'c7b145717f38dea3afc5759562ff08bbe82bacb4782ffd9779eb8021ddb265c3',
+    'SAMUEL LIMA':       'd8bc685ebaad78ead3c0f05ed4678ca0328141665bd437065e58a46b89fc5b93',
+    'JOVENIL SILVA':     '48c3b7fb57d261b4211f4c018ae9912fe3c4174f296c81414b2b5c38997419ad',
+    'ARGEU CARVALHO':    '55204742530e50eec0114be95a071ab9a638c789e44a13419f2e14fcc71cf741',
+    'PAULO CUNHA':       '3c748d864d0560ef0c1f68ba6f13de1960095057b352cbd7141113ae8107987a',
+    'PAULO HENRIQUE':    'd35064373f68799cbc277f9b59f0344b7592f91e72d69b54f190d5dba35b4797',
+    'ANTONIO SANTOS':    '04f73e160ccead67f4f7b65fc065f190ae8a79fc6797d58ab967d567a42efa9b',
+    'MARCIO ALMEIDA':    '021cadb0f1e4a815942b195971af520812485be6dfe0a5761a604e9fdca53d91'
+  };
+
+  // Senha de quem entra por "Outros" (hoje: Forest@2026).
+  // Pra trocar: node ferramentas/gerar-hash.js "OUTROS-LIDER" NovaSenha
+  const HASH_OUTROS = '0803948f944d1250d6bf6797f838f50c52b3186a39f7aab51bc39e732e1b87c0';
 
   const MSG_ERRO_PADRAO = 'Líder ou senha incorretos.';
 
-  function login() {
+  function erro(msg, ms = 3000) {
+    const el = document.getElementById('errorMsg');
+    el.textContent = '⚠️ ' + msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), ms);
+  }
+
+  function entrar(nome) {
+    sessionStorage.setItem('lider_logged', '1');
+    sessionStorage.setItem('lider_nome', nome);
+    window.location.href = 'index.html';
+  }
+
+  let verificando = false;
+
+  async function login() {
+    if (verificando) return;          // o hash demora ~1s; evita duplo clique
     const l = liderSel.value;
     const s = document.getElementById('senha').value;
-    const err = document.getElementById('errorMsg');
 
-    if (l === 'Outros') {
-      const nome = document.getElementById('liderOutroNome').value.trim().toUpperCase();
-      const jaCadastrado = Object.keys(USUARIOS).some(cadastrado => cadastrado.toUpperCase() === nome);
-      if (jaCadastrado) {
-        err.textContent = '⚠️ Esse nome já está cadastrado — selecione ele na lista e entre com a senha dele.';
-        err.classList.add('show');
-        setTimeout(() => err.classList.remove('show'), 4000);
+    verificando = true;
+    btn.disabled = true;
+    btn.textContent = 'Verificando...';
+    try {
+      if (l === 'Outros') {
+        const nome = document.getElementById('liderOutroNome').value.trim().toUpperCase();
+        const jaCadastrado = Object.keys(USUARIOS).some(c => c.toUpperCase() === nome);
+        if (jaCadastrado) {
+          erro('Esse nome já está cadastrado — selecione ele na lista e entre com a senha dele.', 4000);
+          return;
+        }
+        if (nome && hashConfere(await hashSenha(s, 'OUTROS-LIDER'), HASH_OUTROS)) {
+          entrar(nome + ' (externo)');
+          return;
+        }
+      } else if (l && USUARIOS[l] && hashConfere(await hashSenha(s, l), USUARIOS[l])) {
+        entrar(l);
         return;
       }
-      if (nome && s === SENHA_OUTROS) {
-        sessionStorage.setItem('lider_logged', '1');
-        sessionStorage.setItem('lider_nome', nome + ' (externo)');
-        window.location.href = 'index.html';
-        return;
-      }
-    } else if (l && USUARIOS[l] && s === USUARIOS[l]) {
-      sessionStorage.setItem('lider_logged', '1');
-      sessionStorage.setItem('lider_nome', l);
-      window.location.href = 'index.html';
-      return;
+      erro(MSG_ERRO_PADRAO);
+    } finally {
+      verificando = false;
+      btn.disabled = false;
+      btn.textContent = 'Entrar e abrir chamado';
     }
-    err.textContent = '⚠️ ' + MSG_ERRO_PADRAO;
-    err.classList.add('show');
-    setTimeout(() => err.classList.remove('show'), 3000);
   }
+  window.login = login;
 </script>
 </body>
 </html>

@@ -95,6 +95,7 @@
   .badge.aberto    { background: rgba(197,242,73,0.1);  color: #C5F249; border: 1px solid rgba(197,242,73,0.2); }
   .badge.andamento { background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.2); }
   .badge.finalizado{ background: rgba(74,222,128,0.1);  color: #4ade80; border: 1px solid rgba(74,222,128,0.2); }
+  .badge.cancelado { background: rgba(239,68,68,0.09);  color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
   .badge.p1 { background: rgba(239,68,68,0.12);  color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
   .badge.p2 { background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.2); }
   .badge.p3 { background: rgba(74,222,128,0.1);  color: #4ade80; border: 1px solid rgba(74,222,128,0.2); }
@@ -206,6 +207,9 @@
     <div class="nav-item" onclick="showPanel('meses')" id="nav-meses">
       <span class="icon">📁</span> Meses
     </div>
+    <div class="nav-item" onclick="window.open('tv.html','_blank')">
+      <span class="icon">📺</span> Painel TV
+    </div>
   </div>
   <div class="sidebar-footer">
     <div class="tecnico-info">
@@ -262,7 +266,7 @@
 
     <div class="panel" id="panel-historico">
       <div class="panel-header">
-        <div class="panel-title">📚 Histórico de Chamados Finalizados</div>
+        <div class="panel-title">📚 Histórico de Chamados Encerrados</div>
         <div class="filters">
           <input class="filter-input" type="text" id="searchHist" placeholder="🔍 Buscar..." oninput="renderHistory()">
           <select class="filter-select" id="filterMesHist" onchange="renderHistory()"><option value="">Todos os meses</option></select>
@@ -270,7 +274,7 @@
           <button class="btn-refresh" onclick="loadAll()">🔄 Atualizar</button>
         </div>
       </div>
-      <div class="table-wrap"><table><thead><tr><th>ID</th><th>Líder / Setor</th><th>Máquina</th><th>Prioridade</th><th>Solução</th><th>Técnico</th><th>Data Fim</th><th>T. espera</th><th>T. andamento</th><th>Mês</th><th></th></tr></thead><tbody id="histTable"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>ID</th><th>Status</th><th>Líder / Setor</th><th>Máquina</th><th>Prioridade</th><th>Solução</th><th>Técnico</th><th>Data Fim</th><th>T. espera</th><th>T. andamento</th><th>Mês</th><th></th></tr></thead><tbody id="histTable"></tbody></table></div>
     </div>
 
     <div class="panel" id="panel-meses">
@@ -319,8 +323,9 @@
 
 <script type="module">
 import { initializeApp }   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, doc, updateDoc, deleteDoc, query, orderBy, onSnapshot }
+import { getFirestore, collection, doc, updateDoc, query, orderBy, onSnapshot }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { esc, fmtNome, mesAtual, idSeguro, prioClasse, hashSenha, hashConfere } from "./comum.js";
 
 if (!sessionStorage.getItem('manut_logged')) window.location.href = 'login.html';
 const TECNICO = sessionStorage.getItem('manut_tecnico') || 'Manutenção';
@@ -342,9 +347,14 @@ let finalizingId = null;
 let cancelandoId = null;
 let mesesActiveMonth = null;
 
+let desinscrever = null;
+
 function loadAll() {
+  // Sem isto, cada clique em "Atualizar" abria mais um onSnapshot por cima do
+  // anterior: as leituras no Firestore (e o custo) dobravam a cada clique.
+  if (desinscrever) desinscrever();
   const q = query(collection(db, 'chamados'), orderBy('createdAt', 'asc'));
-  onSnapshot(q, (snap) => {
+  desinscrever = onSnapshot(q, (snap) => {
     allTickets = snap.docs.map(d => ({ _docId: d.id, ...d.data() }));
     updateStats(); renderTickets();
     if (document.getElementById('panel-andamento').classList.contains('active')) renderAndamento();
@@ -364,11 +374,6 @@ function fmt(iso) {
   const d = new Date(iso);
   return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 }
-function fmtNome(nome) {
-  if (!nome) return '—';
-  const m = nome.match(/^(.*) \(externo\)$/i);
-  return m ? `${m[1]} <span style="color:var(--text3);font-weight:400">(externo)</span>` : nome;
-}
 function calcTempo(iso1, iso2) {
   if (!iso1) return '—';
   const ms = (iso2 ? new Date(iso2) : new Date()) - new Date(iso1);
@@ -383,6 +388,7 @@ function calcTempo(iso1, iso2) {
 function statusClass(s) {
   if (s==='Aberto') return 'aberto';
   if (s==='Em andamento') return 'andamento';
+  if (s==='Cancelado') return 'cancelado';
   return 'finalizado';
 }
 function prioLabel(p) {
@@ -391,13 +397,9 @@ function prioLabel(p) {
   if (p===3) return '🟢 Funcionando';
   return '—';
 }
-function getCurrentMonth() {
-  const now = new Date();
-  return `${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
-}
 function getMonths() {
   const set = new Set(allTickets.map(t=>t.mes).filter(Boolean));
-  set.add(getCurrentMonth());
+  set.add(mesAtual());
   return [...set].sort();
 }
 
@@ -405,7 +407,7 @@ function updateStats() {
   const a = allTickets.filter(x=>x.status==='Aberto').length;
   const e = allTickets.filter(x=>x.status==='Em andamento').length;
   const f = allTickets.filter(x=>x.status==='Finalizado').length;
-  document.getElementById('statTotal').textContent=allTickets.length;
+  document.getElementById('statTotal').textContent=a+e+f;
   document.getElementById('statAberto').textContent=a;
   document.getElementById('statAndamento').textContent=e;
   document.getElementById('statFinalizado').textContent=f;
@@ -446,16 +448,16 @@ function renderTickets() {
   const tbody=document.getElementById('ticketsTable');
   if(!t.length){tbody.innerHTML=`<tr><td colspan="7"><div class="empty-state"><div class="icon">✅</div>Nenhum chamado novo aguardando</div></td></tr>`;return;}
   tbody.innerHTML=t.map(x=>`<tr>
-    <td class="td-id" data-label="ID">${x.id}</td>
-    <td data-label="Líder / Setor"><div class="td-name">${fmtNome(x.lider)}</div><div class="td-sub">${x.setor}</div></td>
-    <td data-label="Máquina"><span style="font-size:12px">${x.maquina}</span></td>
-    <td data-label="Problema"><span style="font-size:11px;color:var(--text2)">${x.tipoProblema}</span><div class="td-sub" style="max-width:200px">${x.observacao||''}</div></td>
-    <td data-label="Prioridade"><span class="badge p${x.prioridade}">${prioLabel(x.prioridade)}</span></td>
+    <td class="td-id" data-label="ID">${esc(x.id)}</td>
+    <td data-label="Líder / Setor"><div class="td-name">${fmtNome(x.lider)}</div><div class="td-sub">${esc(x.setor)}</div></td>
+    <td data-label="Máquina"><span style="font-size:12px">${esc(x.maquina)}</span></td>
+    <td data-label="Problema"><span style="font-size:11px;color:var(--text2)">${esc(x.tipoProblema)}</span><div class="td-sub" style="max-width:200px">${esc(x.observacao)}</div></td>
+    <td data-label="Prioridade"><span class="badge ${prioClasse(x.prioridade)}">${prioLabel(x.prioridade)}</span></td>
     <td data-label="Aguardando há" style="font-size:12px;color:var(--yellow);font-family:var(--mono);white-space:nowrap">${calcTempo(x.dataCriacao, null)}</td>
     <td><div class="actions">
-      <button class="btn-action btn-iniciar" onclick="iniciar('${x._docId}')">▶ Iniciar</button>
-      <button class="btn-action btn-ver"     onclick="verDetalhes('${x._docId}')">👁</button>
-      <button class="btn-action btn-del"     onclick="pedirCancelamento('${x._docId}','${x.id}')">✕</button>
+      <button class="btn-action btn-iniciar" onclick="iniciar('${idSeguro(x._docId)}')">▶ Iniciar</button>
+      <button class="btn-action btn-ver"     onclick="verDetalhes('${idSeguro(x._docId)}')">👁</button>
+      <button class="btn-action btn-del"     onclick="pedirCancelamento('${idSeguro(x._docId)}')">✕</button>
     </div></td></tr>`).join('');
 }
 window.renderTickets=renderTickets;
@@ -469,17 +471,17 @@ function renderAndamento() {
   const tbody=document.getElementById('andamentoTable');
   if(!t.length){tbody.innerHTML=`<tr><td colspan="8"><div class="empty-state"><div class="icon">📭</div>Nenhum chamado em andamento</div></td></tr>`;return;}
   tbody.innerHTML=t.map(x=>`<tr>
-    <td class="td-id" data-label="ID">${x.id}</td>
-    <td data-label="Líder / Setor"><div class="td-name">${fmtNome(x.lider)}</div><div class="td-sub">${x.setor}</div></td>
-    <td data-label="Máquina"><span style="font-size:12px">${x.maquina}</span></td>
-    <td data-label="Prioridade"><span class="badge p${x.prioridade}">${prioLabel(x.prioridade)}</span></td>
+    <td class="td-id" data-label="ID">${esc(x.id)}</td>
+    <td data-label="Líder / Setor"><div class="td-name">${fmtNome(x.lider)}</div><div class="td-sub">${esc(x.setor)}</div></td>
+    <td data-label="Máquina"><span style="font-size:12px">${esc(x.maquina)}</span></td>
+    <td data-label="Prioridade"><span class="badge ${prioClasse(x.prioridade)}">${prioLabel(x.prioridade)}</span></td>
     <td data-label="T. espera" style="font-size:12px;color:var(--yellow);font-family:var(--mono);white-space:nowrap">${calcTempo(x.dataCriacao, x.dataInicio)}</td>
     <td data-label="T. andamento" style="font-size:12px;color:var(--accent);font-family:var(--mono);white-space:nowrap">${calcTempo(x.dataInicio, null)}</td>
     <td data-label="Técnico"><span style="font-size:12px;color:var(--yellow);font-family:var(--mono)">${fmtNome(x.tecnicoInicio)}</span></td>
     <td><div class="actions">
-      <button class="btn-action btn-finalizar" onclick="abrirFinalizar('${x._docId}','${x.id}','${(x.lider||'').replace(/'/g,"\\'")}')">✓ Finalizar</button>
-      <button class="btn-action btn-ver"       onclick="verDetalhes('${x._docId}')">👁</button>
-      <button class="btn-action btn-del"       onclick="pedirCancelamento('${x._docId}','${x.id}')">✕</button>
+      <button class="btn-action btn-finalizar" onclick="abrirFinalizar('${idSeguro(x._docId)}')">✓ Finalizar</button>
+      <button class="btn-action btn-ver"       onclick="verDetalhes('${idSeguro(x._docId)}')">👁</button>
+      <button class="btn-action btn-del"       onclick="pedirCancelamento('${idSeguro(x._docId)}')">✕</button>
     </div></td></tr>`).join('');
 }
 window.renderAndamento=renderAndamento;
@@ -487,37 +489,43 @@ window.renderAndamento=renderAndamento;
 function renderHistory() {
   const search=document.getElementById('searchHist').value.toLowerCase();
   const mes=document.getElementById('filterMesHist').value;
-  let t=allTickets.filter(x=>x.status==='Finalizado');
+  let t=allTickets.filter(x=>x.status==='Finalizado'||x.status==='Cancelado');
   if(search) t=t.filter(x=>x.lider?.toLowerCase().includes(search)||x.maquina?.toLowerCase().includes(search)||x.id?.toLowerCase().includes(search));
   if(mes)    t=t.filter(x=>x.mes===mes);
   const tbody=document.getElementById('histTable');
-  if(!t.length){tbody.innerHTML=`<tr><td colspan="11"><div class="empty-state"><div class="icon">📭</div>Nenhum chamado finalizado</div></td></tr>`;return;}
-  tbody.innerHTML=t.map(x=>`<tr>
-    <td class="td-id" data-label="ID">${x.id}</td>
-    <td data-label="Líder / Setor"><div class="td-name">${fmtNome(x.lider)}</div><div class="td-sub">${x.setor}</div></td>
-    <td data-label="Máquina"><span style="font-size:12px">${x.maquina}</span></td>
-    <td data-label="Prioridade"><span class="badge p${x.prioridade}">${prioLabel(x.prioridade)}</span></td>
-    <td data-label="Solução" style="max-width:180px;font-size:12px;color:var(--text2)">${x.solucao||'—'}</td>
-    <td data-label="Técnico"><span style="font-size:12px;color:var(--green);font-family:var(--mono)">${fmtNome(x.tecnicoFim)}</span></td>
-    <td data-label="Data Fim" style="font-size:11px;color:var(--text3);font-family:var(--mono);white-space:nowrap">${fmt(x.dataFim)}</td>
+  if(!t.length){tbody.innerHTML=`<tr><td colspan="12"><div class="empty-state"><div class="icon">📭</div>Nenhum chamado encerrado</div></td></tr>`;return;}
+  tbody.innerHTML=t.map(x=>{
+  // Cancelado reaproveita as colunas de encerramento: quem cancelou e quando.
+  const cancelado = x.status==='Cancelado';
+  const quem   = cancelado ? x.canceladoPor     : x.tecnicoFim;
+  const quando = cancelado ? x.dataCancelamento : x.dataFim;
+  return `<tr>
+    <td class="td-id" data-label="ID">${esc(x.id)}</td>
+    <td data-label="Status"><span class="badge ${cancelado?'cancelado':'finalizado'}">${cancelado?'Cancelado':'Finalizado'}</span></td>
+    <td data-label="Líder / Setor"><div class="td-name">${fmtNome(x.lider)}</div><div class="td-sub">${esc(x.setor)}</div></td>
+    <td data-label="Máquina"><span style="font-size:12px">${esc(x.maquina)}</span></td>
+    <td data-label="Prioridade"><span class="badge ${prioClasse(x.prioridade)}">${prioLabel(x.prioridade)}</span></td>
+    <td data-label="Solução" style="max-width:180px;font-size:12px;color:var(--text2)">${cancelado?'—':(esc(x.solucao)||'—')}</td>
+    <td data-label="Técnico"><span style="font-size:12px;color:var(--${cancelado?'text3':'green'});font-family:var(--mono)">${fmtNome(quem)}</span></td>
+    <td data-label="Data Fim" style="font-size:11px;color:var(--text3);font-family:var(--mono);white-space:nowrap">${fmt(quando)}</td>
     <td data-label="T. espera" style="font-size:12px;color:var(--yellow);font-family:var(--mono);white-space:nowrap">${calcTempo(x.dataCriacao, x.dataInicio)}</td>
-    <td data-label="T. andamento" style="font-size:12px;color:var(--accent);font-family:var(--mono);white-space:nowrap">${calcTempo(x.dataInicio, x.dataFim)}</td>
-    <td data-label="Mês"><span style="font-family:var(--mono);font-size:11px;color:var(--accent)">${x.mes}</span></td>
-    <td><button class="btn-action btn-ver" onclick="verDetalhes('${x._docId}')" title="Ver chamado original">👁</button></td>
-  </tr>`).join('');
+    <td data-label="T. andamento" style="font-size:12px;color:var(--accent);font-family:var(--mono);white-space:nowrap">${calcTempo(x.dataInicio, quando)}</td>
+    <td data-label="Mês"><span style="font-family:var(--mono);font-size:11px;color:var(--accent)">${esc(x.mes)}</span></td>
+    <td><button class="btn-action btn-ver" onclick="verDetalhes('${idSeguro(x._docId)}')" title="Ver chamado original">👁</button></td>
+  </tr>`;}).join('');
 }
 window.renderHistory=renderHistory;
 
 function renderMonths() {
-  const months=getMonths(); const cur=getCurrentMonth();
+  const months=getMonths(); const cur=mesAtual();
   if(!mesesActiveMonth || !months.includes(mesesActiveMonth)) mesesActiveMonth=cur;
   const active=mesesActiveMonth;
   document.getElementById('monthControls').innerHTML=
-    months.map(m=>`<button class="btn-month ${m===active?'active':''}" onclick="selectMesAtivo('${m}')">${m}</button>`).join('')+
+    months.map(m=>`<button class="btn-month ${m===active?'active':''}" onclick="selectMesAtivo('${esc(m)}')">${esc(m)}</button>`).join('')+
     `<button class="btn-download-month" onclick="downloadMesCSV()">⬇️ Baixar ${active}</button>`;
   const t=allTickets.filter(x=>x.mes===active);
   document.getElementById('monthStats').innerHTML=`
-    <div style="font-size:13px;color:var(--text2);margin-bottom:10px;font-family:var(--mono)">Mês selecionado: <span style="color:var(--accent)">${active}</span></div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:10px;font-family:var(--mono)">Mês selecionado: <span style="color:var(--accent)">${esc(active)}</span></div>
     <div style="display:flex;gap:12px;flex-wrap:wrap">
       <div class="stat-card" style="min-width:120px"><div class="stat-label">Chamados</div><div class="stat-val all">${t.length}</div></div>
       <div class="stat-card" style="min-width:120px"><div class="stat-label">Finalizados</div><div class="stat-val green">${t.filter(x=>x.status==='Finalizado').length}</div></div>
@@ -529,13 +537,19 @@ function selectMesAtivo(m){mesesActiveMonth=m;renderMonths();}
 window.selectMesAtivo=selectMesAtivo;
 
 function csvRows(t) {
-  const header=['ID','Lider','Setor','Maquina','Tipo Problema','Observacao','Prioridade','Solucao','Tecnico Inicio','Tecnico Fim','Data Abertura','Data Inicio','Data Fim','T. Espera','T. Andamento','Mes'];
-  const rows=t.map(x=>[x.id,x.lider,x.setor,x.maquina,x.tipoProblema,'"'+(x.observacao||'').replace(/"/g,'""')+'"',x.prioridade,'"'+(x.solucao||'').replace(/"/g,'""')+'"',x.tecnicoInicio||'—',x.tecnicoFim||'—',fmt(x.dataCriacao),fmt(x.dataInicio),fmt(x.dataFim),calcTempo(x.dataCriacao,x.dataInicio),calcTempo(x.dataInicio,x.dataFim),x.mes]);
+  const header=['ID','Status','Lider','Setor','Maquina','Tipo Problema','Observacao','Prioridade','Solucao','Tecnico Inicio','Tecnico Fim','Cancelado Por','Data Abertura','Data Inicio','Data Fim','T. Espera','T. Andamento','Mes'];
+  // O ; separa as colunas, então ele não pode sobreviver dentro de um campo.
+  const lmp=v=>String(v===null||v===undefined?'':v).replace(/[;\r\n]/g,' ').trim();
+  const txt=v=>'"'+lmp(v).replace(/"/g,'""')+'"';
+  const rows=t.map(x=>{
+    const fim=x.status==='Cancelado'?x.dataCancelamento:x.dataFim;
+    return [lmp(x.id),lmp(x.status),txt(x.lider),lmp(x.setor),txt(x.maquina),lmp(x.tipoProblema),txt(x.observacao),Number(x.prioridade)||'',txt(x.solucao),txt(x.tecnicoInicio||'—'),txt(x.tecnicoFim||'—'),txt(x.canceladoPor||'—'),fmt(x.dataCriacao),fmt(x.dataInicio),fmt(fim),calcTempo(x.dataCriacao,x.dataInicio),calcTempo(x.dataInicio,fim),lmp(x.mes)];
+  });
   return [header,...rows].map(r=>r.join(';')).join('\n');
 }
 
 function downloadMesCSV(){
-  const mes=mesesActiveMonth||getCurrentMonth();
+  const mes=mesesActiveMonth||mesAtual();
   const t=allTickets.filter(x=>x.mes===mes);
   if(!t.length){alert('Nenhum chamado para exportar em '+mes+'.');return;}
   const csv=csvRows(t);
@@ -555,9 +569,12 @@ async function iniciar(docId){
 }
 window.iniciar=iniciar;
 
-function abrirFinalizar(docId,id,lider){
+function abrirFinalizar(docId){
+  const t=allTickets.find(x=>x._docId===docId);
+  if(!t) return;
   finalizingId=docId;
-  document.getElementById('modalFinalizarSub').textContent=`${id} — ${lider}`;
+  // textContent, não innerHTML: nome de pessoa nunca vira marcação.
+  document.getElementById('modalFinalizarSub').textContent=`${t.id} — ${t.lider||''}`;
   document.getElementById('solucaoInput').value='';
   document.getElementById('btnConfirmarFinalizar').disabled=false;
   document.getElementById('btnConfirmarFinalizar').textContent='Finalizar';
@@ -581,11 +598,16 @@ async function confirmarFinalizar(){
 }
 window.confirmarFinalizar=confirmarFinalizar;
 
-const SENHA_CANCELAR = 'manutencao@2026';
+// Senha pra cancelar chamado (hoje: manutencao@2026), guardada como hash.
+// Pra trocar: node ferramentas/gerar-hash.js "CANCELAR" NovaSenha
+const HASH_CANCELAR = 'bdeffc3bfcfa7991067c17c5772bc71e49c5ddb864d5b6fd622ed07bcaefba50';
 
-function pedirCancelamento(docId,id){
+function pedirCancelamento(docId){
+  const t=allTickets.find(x=>x._docId===docId);
+  if(!t) return;
   cancelandoId=docId;
-  document.getElementById('modalCancelarSub').textContent=`Cancelar o chamado ${id}? Essa ação não pode ser desfeita.`;
+  document.getElementById('modalCancelarSub').textContent=
+    `Cancelar o chamado ${t.id}? Ele sai das listas e fica registrado no histórico como cancelado.`;
   document.getElementById('cancelarSenha').value='';
   document.getElementById('cancelarErrorMsg').classList.remove('show');
   document.getElementById('btnConfirmarCancelar').disabled=false;
@@ -597,19 +619,27 @@ window.pedirCancelamento=pedirCancelamento;
 async function confirmarCancelamento(){
   const senha=document.getElementById('cancelarSenha').value;
   const err=document.getElementById('cancelarErrorMsg');
-  if(senha!==SENHA_CANCELAR){
-    err.classList.add('show');
-    setTimeout(()=>err.classList.remove('show'),3000);
-    return;
-  }
   const btn=document.getElementById('btnConfirmarCancelar');
-  btn.disabled=true; btn.textContent='Cancelando...';
+  btn.disabled=true; btn.textContent='Verificando...';
   try{
-    await deleteDoc(doc(db,'chamados',cancelandoId));
+    if(!hashConfere(await hashSenha(senha,'CANCELAR'), HASH_CANCELAR)){
+      err.classList.add('show');
+      setTimeout(()=>err.classList.remove('show'),3000);
+      return;
+    }
+    btn.textContent='Cancelando...';
+    // Marca como cancelado em vez de apagar: quem cancelou e quando fica
+    // registrado, e o número do chamado não some do histórico.
+    await updateDoc(doc(db,'chamados',cancelandoId),{
+      status:'Cancelado',
+      dataCancelamento:new Date().toISOString(),
+      canceladoPor:TECNICO
+    });
     closeModal('modalCancelar');
-    showToast('Chamado cancelado.');
+    showToast('Chamado cancelado por '+TECNICO+'.');
   } catch(e){
     showToast('Erro ao cancelar.','error');
+  } finally {
     btn.disabled=false; btn.textContent='Cancelar chamado';
   }
 }
@@ -619,32 +649,36 @@ function verDetalhes(docId){
   const t=allTickets.find(x=>x._docId===docId);
   if(!t) return;
   document.getElementById('detTitle').innerHTML=`
-    <span style="font-family:var(--mono);font-size:13px;color:var(--accent)">${t.id}</span>
-    <span class="badge ${statusClass(t.status)}" style="font-size:11px">${t.status}</span>
-    <span class="badge p${t.prioridade}" style="font-size:11px">${prioLabel(t.prioridade)}</span>`;
+    <span style="font-family:var(--mono);font-size:13px;color:var(--accent)">${esc(t.id)}</span>
+    <span class="badge ${statusClass(t.status)}" style="font-size:11px">${esc(t.status)}</span>
+    <span class="badge ${prioClasse(t.prioridade)}" style="font-size:11px">${prioLabel(t.prioridade)}</span>`;
   document.getElementById('detBody').innerHTML=`
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px">
         <div style="font-size:10px;color:var(--text3);font-family:var(--mono);letter-spacing:.08em;margin-bottom:4px">LÍDER</div>
         <div style="font-weight:600;font-size:14px">${fmtNome(t.lider)}</div>
-        <div style="font-size:12px;color:var(--text2);margin-top:2px">${t.setor}</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px">${esc(t.setor)}</div>
       </div>
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px">
         <div style="font-size:10px;color:var(--text3);font-family:var(--mono);letter-spacing:.08em;margin-bottom:4px">MÁQUINA / ÁREA</div>
-        <div style="font-size:13px;color:var(--text)">${t.maquina}</div>
+        <div style="font-size:13px;color:var(--text)">${esc(t.maquina)}</div>
       </div>
     </div>
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px">
       <div style="font-size:10px;color:var(--text3);font-family:var(--mono);letter-spacing:.08em;margin-bottom:6px">TIPO DE PROBLEMA</div>
-      <span style="background:rgba(197,242,73,0.08);border:1px solid rgba(197,242,73,0.18);color:var(--accent);border-radius:6px;padding:3px 10px;font-size:12px;font-weight:600">${t.tipoProblema}</span>
+      <span style="background:rgba(197,242,73,0.08);border:1px solid rgba(197,242,73,0.18);color:var(--accent);border-radius:6px;padding:3px 10px;font-size:12px;font-weight:600">${esc(t.tipoProblema)}</span>
     </div>
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px">
       <div style="font-size:10px;color:var(--text3);font-family:var(--mono);letter-spacing:.08em;margin-bottom:8px">📝 OBSERVAÇÃO</div>
-      <div style="font-size:13px;color:var(--text);line-height:1.7;white-space:pre-wrap">${t.observacao}</div>
+      <div style="font-size:13px;color:var(--text);line-height:1.7;white-space:pre-wrap">${esc(t.observacao)}</div>
     </div>
     ${t.solucao?`<div style="background:rgba(74,222,128,0.05);border:1px solid rgba(74,222,128,0.18);border-radius:10px;padding:14px;margin-bottom:10px">
       <div style="font-size:10px;color:var(--green);font-family:var(--mono);letter-spacing:.08em;margin-bottom:8px">✅ SOLUÇÃO APLICADA</div>
-      <div style="font-size:13px;color:var(--text);line-height:1.7;white-space:pre-wrap">${t.solucao}</div>
+      <div style="font-size:13px;color:var(--text);line-height:1.7;white-space:pre-wrap">${esc(t.solucao)}</div>
+    </div>`:''}
+    ${t.status==='Cancelado'?`<div style="background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.18);border-radius:10px;padding:14px;margin-bottom:10px">
+      <div style="font-size:10px;color:#f87171;font-family:var(--mono);letter-spacing:.08em;margin-bottom:6px">🗑️ CANCELADO</div>
+      <div style="font-size:13px;color:var(--text)">${fmtNome(t.canceladoPor)} · ${fmt(t.dataCancelamento)}</div>
     </div>`:''}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px">
