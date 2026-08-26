@@ -208,7 +208,10 @@
     <div class="nav-item" onclick="showPanel('meses')" id="nav-meses">
       <span class="icon">📁</span> Meses
     </div>
-    <div class="nav-item" onclick="window.open('tv.html','_blank')">
+    <!-- Navega na mesma janela de propósito: o WebView do APK ignora
+         window.open, então abrir em nova aba não fazia nada dentro do app.
+         O botão Voltar do Android volta pro painel. -->
+    <div class="nav-item" onclick="location.href='tv.html'">
       <span class="icon">📺</span> Painel TV
     </div>
   </div>
