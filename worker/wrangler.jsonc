@@ -20,6 +20,14 @@
   },
   // Guarda os aparelhos inscritos e o controle de aviso duplicado.
   // Namespace próprio deste Worker — nada a ver com o KV_SEGURANCA dos outros projetos.
+  // Banco dos chamados. Migrado do Firestore em 27/08/2026.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "chamados-manutencao",
+      "database_id": "1a37e6a5-1360-4267-ae44-77d2b2e9e339"
+    }
+  ],
   "kv_namespaces": [
     { "binding": "INSCRICOES", "id": "0588c528c93f4b9d911009ee46913be7" }
   ]
