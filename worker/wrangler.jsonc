@@ -21,6 +21,17 @@
   // Guarda os aparelhos inscritos e o controle de aviso duplicado.
   // Namespace próprio deste Worker — nada a ver com o KV_SEGURANCA dos outros projetos.
   // Banco dos chamados. Migrado do Firestore em 27/08/2026.
+  // Tempo real: uma instância só, que todas as telas compartilham.
+  // new_sqlite_classes (e não new_classes) é a variante que funciona sem exigir
+  // plano pago — é a recomendada pra objetos novos.
+  "durable_objects": {
+    "bindings": [
+      { "name": "TEMPO_REAL", "class_name": "TempoReal" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["TempoReal"] }
+  ],
   "d1_databases": [
     {
       "binding": "DB",
