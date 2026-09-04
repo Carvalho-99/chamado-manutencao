@@ -11,11 +11,19 @@
 // SHA-256 em cima disso — microssegundos, cabe folgado no limite de CPU do Worker.
 // Fazer as 200 mil iterações aqui estouraria o limite e o login não funcionaria.
 
-const DIAS = 24 * 60 * 60 * 1000;
+const HORAS = 60 * 60 * 1000;
 
-// Técnico usa celular pessoal: sessão longa, pra notificação tocar e ele já cair
-// dentro do painel. Líder usa tablet compartilhado: sessão curta de propósito.
-const VALIDADE = { tecnico: 30 * DIAS, lider: 12 * 60 * 60 * 1000 };
+// Sessão curta nos dois papéis, de propósito.
+//
+// Cheguei a propor deixar o técnico logado por semanas, pra ele tocar na
+// notificação e já cair dentro do chamado. O Bruno vetou: na Forest, logar a
+// cada ação é decisão de segurança — os aparelhos são compartilhados e cada
+// início e cada finalização precisa ser atribuível a uma pessoa de verdade.
+//
+// Isto aqui é só a rede de segurança do servidor. Quem manda no dia a dia é o
+// navegador, que descarta o token ao fechar o app (sessionStorage), exatamente
+// como o sistema se comporta hoje.
+const VALIDADE = { tecnico: 12 * HORAS, lider: 12 * HORAS };
 
 export async function sha256hex(texto) {
   const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(texto));
