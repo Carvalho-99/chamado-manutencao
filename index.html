@@ -96,6 +96,9 @@
   .prio-option.prio-ok input:checked + label       { background: rgba(74,222,128,0.1);  border-color: var(--green);  color: var(--green); }
   .prio-option.prio-critico input:checked + label  { background: rgba(245,158,11,0.1);  border-color: var(--yellow); color: var(--yellow); }
   .prio-option.prio-urgente input:checked + label  { background: rgba(239,68,68,0.1);   border-color: var(--red);    color: #f87171; }
+  /* Preventiva sai da escala de urgência de propósito: é trabalho planejado,
+     não máquina com problema. Por isso roxo, e não mais um tom de verde. */
+  .prio-option.prio-preventiva input:checked + label { background: rgba(193,180,238,0.12); border-color: var(--purple); color: var(--purple); }
   .prio-option label:hover { border-color: var(--border2); }
 
   .btn-submit { width: 100%; padding: 16px 24px; background: var(--accent); border: none; border-radius: 10px; font-family: var(--sans); font-size: 16px; font-weight: 600; color: #0A252A; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 10px; letter-spacing: 0.01em; margin-top: 8px; }
@@ -223,6 +226,10 @@
               <div class="prio-option prio-urgente" data-p="1">
                 <input type="radio" name="prioridade" id="pr_1" value="1">
                 <label for="pr_1"><span class="prio-num">1</span>Urgente</label>
+              </div>
+              <div class="prio-option prio-preventiva" data-p="4">
+                <input type="radio" name="prioridade" id="pr_4" value="4">
+                <label for="pr_4"><span class="prio-num">🔧</span>Manutenção preventiva</label>
               </div>
             </div>
           </div>

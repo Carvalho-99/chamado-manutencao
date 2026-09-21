@@ -79,5 +79,5 @@ export function idSeguro(v) {
 
 // Classe CSS da prioridade, sem deixar valor do banco virar nome de classe.
 export function prioClasse(p) {
-  return [1, 2, 3].includes(Number(p)) ? 'p' + Number(p) : '';
+  return [1, 2, 3, 4].includes(Number(p)) ? 'p' + Number(p) : '';
 }

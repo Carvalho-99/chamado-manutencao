@@ -79,7 +79,7 @@ service cloud.firestore {
           && txtCheio(novo().maquina, 80)
           && txtCheio(novo().tipoProblema, 20)
           && txtCheio(novo().observacao, 1000)
-          && novo().prioridade in [1, 2, 3]
+          && novo().prioridade in [1, 2, 3, 4]   // 4 = manutenção preventiva
           && novo().status == 'Aberto'
           && txtCheio(novo().mes, 7)
           && txtCheio(novo().dataCriacao, 30)

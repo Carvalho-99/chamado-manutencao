@@ -76,7 +76,7 @@ export async function abrir(env, sessao, corpo) {
   if (!maquina)                 return { erro: 'informe a máquina', status: 400 };
   if (!TIPOS.has(tipo))         return { erro: 'tipo de problema inválido', status: 400 };
   if (!observacao)              return { erro: 'descreva o problema', status: 400 };
-  if (![1, 2, 3].includes(prioridade)) return { erro: 'prioridade inválida', status: 400 };
+  if (![1, 2, 3, 4].includes(prioridade)) return { erro: 'prioridade inválida', status: 400 };
 
   const agora = new Date().toISOString();
 
