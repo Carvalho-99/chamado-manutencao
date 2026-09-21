@@ -88,10 +88,13 @@
   .radio-option input[type="radio"]:checked + label { background: rgba(197,242,73,0.08); border-color: var(--accent); color: var(--accent); }
   .radio-option label:hover { border-color: var(--border2); color: var(--text); }
 
-  .prio-group { display: flex; gap: 10px; flex-wrap: wrap; }
-  .prio-option { flex: 1; min-width: 150px; position: relative; }
+  /* Grade em vez de flex: com flex as caixas ficavam de larguras diferentes,
+     porque cada rótulo tem um tamanho de texto. Colunas iguais resolvem, e
+     o stretch deixa todas com a mesma altura mesmo quando um texto quebra. */
+  .prio-group { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; align-items: stretch; }
+  .prio-option { position: relative; }
   .prio-option input[type="radio"] { position: absolute; opacity: 0; width: 0; height: 0; }
-  .prio-option label { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 16px 12px; background: var(--bg2); border: 2px solid var(--border); border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text2); transition: all 0.2s; text-align: center; }
+  .prio-option label { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 16px 12px; background: var(--bg2); border: 2px solid var(--border); border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text2); transition: all 0.2s; text-align: center; }
   .prio-option .prio-num { font-size: 20px; font-family: var(--mono); }
   .prio-option.prio-ok input:checked + label       { background: rgba(74,222,128,0.1);  border-color: var(--green);  color: var(--green); }
   .prio-option.prio-critico input:checked + label  { background: rgba(245,158,11,0.1);  border-color: var(--yellow); color: var(--yellow); }
@@ -120,6 +123,7 @@
   @media (max-width: 600px) {
     .form-card { padding: 24px 18px; }
     .field-grid.cols2, .field-grid.cols3 { grid-template-columns: 1fr; }
+    .prio-group { grid-template-columns: repeat(2, 1fr); }
     header { padding: 0 16px; }
   }
 </style>
@@ -215,21 +219,21 @@
           <div class="field">
             <label>Prioridade <span class="req">*</span></label>
             <div class="prio-group">
-              <div class="prio-option prio-ok" data-p="3">
-                <input type="radio" name="prioridade" id="pr_3" value="3" required>
-                <label for="pr_3"><span class="prio-num">3</span>Está funcionando</label>
+              <div class="prio-option prio-urgente" data-p="1">
+                <input type="radio" name="prioridade" id="pr_1" value="1" required>
+                <label for="pr_1"><span class="prio-num">1</span>Urgente</label>
               </div>
               <div class="prio-option prio-critico" data-p="2">
                 <input type="radio" name="prioridade" id="pr_2" value="2">
                 <label for="pr_2"><span class="prio-num">2</span>Crítico, aguenta um pouco</label>
               </div>
-              <div class="prio-option prio-urgente" data-p="1">
-                <input type="radio" name="prioridade" id="pr_1" value="1">
-                <label for="pr_1"><span class="prio-num">1</span>Urgente</label>
+              <div class="prio-option prio-preventiva" data-p="3">
+                <input type="radio" name="prioridade" id="pr_3" value="3">
+                <label for="pr_3"><span class="prio-num">3</span>Manutenção preventiva</label>
               </div>
-              <div class="prio-option prio-preventiva" data-p="4">
+              <div class="prio-option prio-ok" data-p="4">
                 <input type="radio" name="prioridade" id="pr_4" value="4">
-                <label for="pr_4"><span class="prio-num">🔧</span>Manutenção preventiva</label>
+                <label for="pr_4"><span class="prio-num">4</span>Está funcionando</label>
               </div>
             </div>
           </div>

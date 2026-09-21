@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS chamados (
   maquina           TEXT    NOT NULL CHECK (length(maquina)    BETWEEN 1 AND 80),
   tipo_problema     TEXT    NOT NULL CHECK (length(tipo_problema) BETWEEN 1 AND 20),
   observacao        TEXT    NOT NULL CHECK (length(observacao) BETWEEN 1 AND 1000),
-  -- 1 urgente · 2 crítico · 3 está funcionando · 4 manutenção preventiva
+  -- 1 urgente · 2 crítico · 3 manutenção preventiva · 4 está funcionando
   prioridade        INTEGER NOT NULL CHECK (prioridade IN (1, 2, 3, 4)),
 
   status            TEXT    NOT NULL DEFAULT 'Aberto'

@@ -65,7 +65,8 @@ async function avisarTelas(env, tipo, chamado) {
 // ---------------------------------------------------------------------------
 // Push (inalterado no comportamento; agora disparado de dentro, não pela tela)
 // ---------------------------------------------------------------------------
-const ROTULO_PRIORIDADE = { 1: '🔴 URGENTE', 2: '🟡 Crítico', 3: '🟢 Funcionando', 4: '🔧 Preventiva' };
+// 1 urgente · 2 crítico · 3 preventiva · 4 está funcionando
+const ROTULO_PRIORIDADE = { 1: '🔴 URGENTE', 2: '🟡 Crítico', 3: '🔧 Preventiva', 4: '🟢 Funcionando' };
 
 async function enviarPara(env, inscricao, mensagem) {
   const payload = await buildPushPayload(mensagem, inscricao, {
