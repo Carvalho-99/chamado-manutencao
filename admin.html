@@ -253,6 +253,7 @@
         <div class="panel-title">📋 Chamados Novos — Aguardando Atendimento</div>
         <div class="filters">
           <input class="filter-input" type="text" id="searchInput" placeholder="🔍 Buscar..." oninput="renderTickets()">
+          <select class="filter-select" id="filterMaquina" onchange="renderTickets()"><option value="">Todas as máquinas</option></select>
           <select class="filter-select" id="filterSetor" onchange="renderTickets()">
             <option value="">Todos os setores</option>
             <option>CORTE</option><option>REBOBINAGEM</option><option>EMBALAGEM AUTOMÁTICA</option><option>EMBALAGEM MANUAL</option><option>COLAGEM</option><option>PRENSAGEM</option><option>MANUTENÇÃO</option><option>ALMOXARIFADO</option><option>EMPILHADEIRAS</option><option>ÁREAS GERAIS</option>
@@ -268,6 +269,7 @@
         <div class="panel-title">⚡ Chamados Em Andamento</div>
         <div class="filters">
           <input class="filter-input" type="text" id="searchAnd" placeholder="🔍 Buscar..." oninput="renderAndamento()">
+          <select class="filter-select" id="filterMaquinaAnd" onchange="renderAndamento()"><option value="">Todas as máquinas</option></select>
           <select class="filter-select" id="filterMesAnd" onchange="renderAndamento()"><option value="">Todos os meses</option></select>
           <button class="btn-refresh" onclick="loadAll()">🔄 Atualizar</button>
         </div>
@@ -280,6 +282,7 @@
         <div class="panel-title">📚 Histórico de Chamados Encerrados</div>
         <div class="filters">
           <input class="filter-input" type="text" id="searchHist" placeholder="🔍 Buscar..." oninput="renderHistory()">
+          <select class="filter-select" id="filterMaquinaHist" onchange="renderHistory()"><option value="">Todas as máquinas</option></select>
           <select class="filter-select" id="filterMesHist" onchange="renderHistory()"><option value="">Todos os meses</option></select>
           <button class="btn-export" onclick="exportCSV()">⬇️ Exportar CSV</button>
           <button class="btn-refresh" onclick="loadAll()">🔄 Atualizar</button>
@@ -363,7 +366,7 @@ function loadAll() {
     if (document.getElementById('panel-andamento').classList.contains('active')) renderAndamento();
     if (document.getElementById('panel-historico').classList.contains('active')) renderHistory();
     if (document.getElementById('panel-meses').classList.contains('active'))    renderMonths();
-    populateMonthSelect();
+    populateMonthSelect(); populateMaquinaSelect();
   }, err => {
     console.error('Firebase error:', err);
     document.getElementById('ticketsTable').innerHTML =
@@ -430,6 +433,25 @@ function getMonthFromISO(iso) {
   return `${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
 }
 
+// As máquinas vêm dos próprios chamados, não de uma lista fixa: assim só aparece
+// equipamento que realmente teve chamado, e máquina nova (ou digitada em "Outro")
+// entra sozinha sem precisar mexer no código.
+function populateMaquinaSelect() {
+  const preencher = (idSel, chamados) => {
+    const sel = document.getElementById(idSel);
+    const antes = sel.value;
+    const maquinas = [...new Set(chamados.map(x => x.maquina).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    sel.innerHTML = '<option value="">Todas as máquinas</option>' +
+      maquinas.map(m => `<option>${esc(m)}</option>`).join('');
+    // Mantém a escolha da pessoa se a máquina ainda existir na lista nova.
+    if (antes && maquinas.includes(antes)) sel.value = antes;
+  };
+  preencher('filterMaquina',     allTickets.filter(x => x.status === 'Aberto'));
+  preencher('filterMaquinaAnd',  allTickets.filter(x => x.status === 'Em andamento'));
+  preencher('filterMaquinaHist', allTickets.filter(x => x.status === 'Finalizado' || x.status === 'Cancelado'));
+}
+
 function populateMonthSelect() {
   const sel=document.getElementById('filterMesHist'); const val=sel.value;
   sel.innerHTML='<option value="">Todos os meses</option>';
@@ -446,9 +468,11 @@ function populateMonthSelect() {
 function renderTickets() {
   const search=document.getElementById('searchInput').value.toLowerCase();
   const setor=document.getElementById('filterSetor').value;
+  const maquina=document.getElementById('filterMaquina').value;
   let t=allTickets.filter(x=>x.status==='Aberto');
   if(search) t=t.filter(x=>x.lider?.toLowerCase().includes(search)||x.maquina?.toLowerCase().includes(search)||x.id?.toLowerCase().includes(search));
-  if(setor)  t=t.filter(x=>x.setor===setor);
+  if(setor)   t=t.filter(x=>x.setor===setor);
+  if(maquina) t=t.filter(x=>x.maquina===maquina);
   const tbody=document.getElementById('ticketsTable');
   if(!t.length){tbody.innerHTML=`<tr><td colspan="7"><div class="empty-state"><div class="icon">✅</div>Nenhum chamado novo aguardando</div></td></tr>`;return;}
   tbody.innerHTML=t.map(x=>`<tr>
@@ -469,9 +493,11 @@ window.renderTickets=renderTickets;
 function renderAndamento() {
   const search=document.getElementById('searchAnd').value.toLowerCase();
   const mes=document.getElementById('filterMesAnd').value;
+  const maquina=document.getElementById('filterMaquinaAnd').value;
   let t=allTickets.filter(x=>x.status==='Em andamento');
   if(search) t=t.filter(x=>x.lider?.toLowerCase().includes(search)||x.maquina?.toLowerCase().includes(search)||x.id?.toLowerCase().includes(search));
   if(mes) t=t.filter(x=>getMonthFromISO(x.dataInicio||x.dataCriacao)===mes);
+  if(maquina) t=t.filter(x=>x.maquina===maquina);
   const tbody=document.getElementById('andamentoTable');
   if(!t.length){tbody.innerHTML=`<tr><td colspan="8"><div class="empty-state"><div class="icon">📭</div>Nenhum chamado em andamento</div></td></tr>`;return;}
   tbody.innerHTML=t.map(x=>`<tr>
@@ -490,12 +516,22 @@ function renderAndamento() {
 }
 window.renderAndamento=renderAndamento;
 
+// Fonte única do que o Histórico considera. A tela e o "Exportar CSV" chamam
+// esta função — antes cada um tinha a sua cópia do filtro, e elas divergiram: a
+// tela passou a mostrar cancelados e o CSV continuou exportando só finalizados.
+function chamadosDoHistorico() {
+  const search  = document.getElementById('searchHist').value.toLowerCase();
+  const mes     = document.getElementById('filterMesHist').value;
+  const maquina = document.getElementById('filterMaquinaHist').value;
+  let t = allTickets.filter(x => x.status === 'Finalizado' || x.status === 'Cancelado');
+  if (search)  t = t.filter(x => x.lider?.toLowerCase().includes(search) || x.maquina?.toLowerCase().includes(search) || x.id?.toLowerCase().includes(search));
+  if (mes)     t = t.filter(x => x.mes === mes);
+  if (maquina) t = t.filter(x => x.maquina === maquina);
+  return t;
+}
+
 function renderHistory() {
-  const search=document.getElementById('searchHist').value.toLowerCase();
-  const mes=document.getElementById('filterMesHist').value;
-  let t=allTickets.filter(x=>x.status==='Finalizado'||x.status==='Cancelado');
-  if(search) t=t.filter(x=>x.lider?.toLowerCase().includes(search)||x.maquina?.toLowerCase().includes(search)||x.id?.toLowerCase().includes(search));
-  if(mes)    t=t.filter(x=>x.mes===mes);
+  const t = chamadosDoHistorico();
   const tbody=document.getElementById('histTable');
   if(!t.length){tbody.innerHTML=`<tr><td colspan="12"><div class="empty-state"><div class="icon">📭</div>Nenhum chamado encerrado</div></td></tr>`;return;}
   tbody.innerHTML=t.map(x=>{
@@ -703,14 +739,19 @@ function verDetalhes(docId){
 window.verDetalhes=verDetalhes;
 
 function exportCSV(){
-  const mes=document.getElementById('filterMesHist').value;
-  let t=allTickets.filter(x=>x.status==='Finalizado');
-  if(mes) t=t.filter(x=>x.mes===mes);
-  if(!t.length){alert('Nenhum chamado para exportar.');return;}
-  const csv=csvRows(t);
-  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`chamados_manutencao_${mes?mes.replace('/','_'):'todos'}.csv`;a.click();
-  showToast('Exportação concluída!');
+  // Exporta exatamente o que está na tela: mesmos filtros, mesma lista.
+  const t = chamadosDoHistorico();
+  if(!t.length){alert('Nenhum chamado para exportar com esses filtros.');return;}
+
+  const mes = document.getElementById('filterMesHist').value;
+  const maquina = document.getElementById('filterMaquinaHist').value;
+  const pedaco = v => v.replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'').toLowerCase();
+  const nome = ['chamados_manutencao', mes?pedaco(mes):'todos', maquina?pedaco(maquina):null]
+                 .filter(Boolean).join('_') + '.csv';
+
+  const blob=new Blob(['﻿'+csvRows(t)],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=nome;a.click();
+  showToast('Exportados '+t.length+' chamados.');
 }
 window.exportCSV=exportCSV;
 
