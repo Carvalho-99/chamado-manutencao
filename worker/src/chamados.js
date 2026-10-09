@@ -49,7 +49,8 @@ function paraTela(r) {
 }
 
 export async function listar(env) {
-  const { results } = await env.DB.prepare('SELECT * FROM chamados ORDER BY id ASC').all();
+  // DESC igual ao painel atual: mais recente primeiro.
+  const { results } = await env.DB.prepare('SELECT * FROM chamados ORDER BY id DESC').all();
   return results.map(paraTela);
 }
 

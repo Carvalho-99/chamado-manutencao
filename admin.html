@@ -359,7 +359,10 @@ function loadAll() {
   // Sem isto, cada clique em "Atualizar" abria mais um onSnapshot por cima do
   // anterior: as leituras no Firestore (e o custo) dobravam a cada clique.
   if (desinscrever) desinscrever();
-  const q = query(collection(db, 'chamados'), orderBy('createdAt', 'asc'));
+  // Mais recente em cima, em todas as abas: o chamado que acabou de entrar
+  // aparece no topo, e no Histórico o que foi feito hoje não fica soterrado
+  // sob trezentas linhas antigas.
+  const q = query(collection(db, 'chamados'), orderBy('createdAt', 'desc'));
   desinscrever = onSnapshot(q, (snap) => {
     allTickets = snap.docs.map(d => ({ _docId: d.id, ...d.data() }));
     updateStats(); renderTickets();

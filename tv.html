@@ -216,9 +216,11 @@ function ticketCard(x, statusClass, linha2) {
 }
 
 function renderTicketGrid(tickets) {
-  const byOldest = (a, b) => (a.dataCriacao||'').localeCompare(b.dataCriacao||'');
-  const abertos = tickets.filter(x => x.status === 'Aberto').sort(byOldest);
-  const andamentos = tickets.filter(x => x.status === 'Em andamento').sort(byOldest);
+  // Mesma ordem do painel (mais recente primeiro), pra quem olha os dois não
+  // ver listas em ordens diferentes.
+  const maisRecentePrimeiro = (a, b) => (b.dataCriacao||'').localeCompare(a.dataCriacao||'');
+  const abertos = tickets.filter(x => x.status === 'Aberto').sort(maisRecentePrimeiro);
+  const andamentos = tickets.filter(x => x.status === 'Em andamento').sort(maisRecentePrimeiro);
 
   document.getElementById('countAbertoCol').textContent = abertos.length;
   document.getElementById('countAndamentoCol').textContent = andamentos.length;
