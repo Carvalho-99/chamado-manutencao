@@ -45,10 +45,20 @@ service cloud.firestore {
       function finalizar() {
         return atual().status == 'Em andamento'
             && novo().status  == 'Finalizado'
-            && mudouSo(['status', 'dataFim', 'tecnicoFim', 'solucao'])
+            && mudouSo(['status', 'dataFim', 'tecnicoFim', 'solucao', 'fotos'])
             && txtCheio(novo().tecnicoFim, 80)
             && txtCheio(novo().dataFim, 30)
-            && txtCheio(novo().solucao, 1000);
+            && txtCheio(novo().solucao, 1000)
+            && fotosValidas();
+      }
+
+      // As fotos são opcionais, mas quando vêm precisam ser uma lista curta de
+      // endereços — o campo é escrito pelo navegador, então o banco confere.
+      function fotosValidas() {
+        return !('fotos' in novo())
+            || (novo().fotos is list
+                && novo().fotos.size() <= 3
+                && novo().fotos.size() > 0);
       }
 
       // Aberto | Em andamento -> Cancelado (nunca apaga de verdade)

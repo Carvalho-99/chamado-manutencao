@@ -146,6 +146,26 @@
   .btn-confirm:hover { background: #22c55e; }
   .btn-confirm:disabled { opacity: 0.6; cursor: not-allowed; }
 
+  .fotos-area { margin: -8px 0 16px; }
+  .btn-foto { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px;
+    background: rgba(197,242,73,0.08); border: 1px dashed rgba(197,242,73,0.35); border-radius: 9px;
+    color: var(--accent); font-family: var(--sans); font-size: 13px; font-weight: 600; cursor: pointer; }
+  .btn-foto:hover { background: rgba(197,242,73,0.14); }
+  .btn-foto:disabled { opacity: .45; cursor: not-allowed; }
+  .fotos-lista { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .foto-item { position: relative; width: 78px; height: 78px; border-radius: 8px; overflow: hidden;
+    border: 1px solid var(--border2); background: var(--bg2); }
+  .foto-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .foto-tirar { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; border: none;
+    border-radius: 50%; background: rgba(0,0,0,.72); color: #fff; font-size: 13px; line-height: 1;
+    cursor: pointer; padding: 0; }
+  .foto-peso { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,.6);
+    color: #cfe0cf; font-size: 9px; font-family: var(--mono); text-align: center; padding: 1px 0; }
+  .fotos-dica { font-size: 11px; color: var(--text3); margin-top: 6px; }
+  .det-fotos { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .det-fotos a { display: block; width: 92px; height: 92px; border-radius: 8px; overflow: hidden;
+    border: 1px solid var(--border2); }
+  .det-fotos img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .toast { position: fixed; bottom: 24px; right: 24px; background: var(--card2); border: 1px solid var(--green); border-radius: 10px; padding: 13px 18px; font-size: 13px; color: var(--green); z-index: 999; transform: translateX(120%); transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
   .toast.show  { transform: translateX(0); }
   .toast.error { border-color: var(--red); color: #f87171; }
@@ -304,6 +324,16 @@
     <div class="modal-sub" id="modalFinalizarSub"></div>
     <label>O que foi feito para resolver?</label>
     <textarea id="solucaoInput" placeholder="Descreva o que foi feito para resolver o problema..."></textarea>
+    <div class="fotos-area">
+      <!-- capture="environment" faz o celular abrir a camera traseira direto,
+           em vez de perguntar entre galeria e camera -->
+      <input type="file" id="fotoInput" accept="image/*" capture="environment" multiple style="display:none">
+      <button type="button" class="btn-foto" id="btnFoto" onclick="document.getElementById('fotoInput').click()">
+        📷 <span id="btnFotoTexto">Anexar foto</span>
+      </button>
+      <div class="fotos-lista" id="fotosLista"></div>
+      <div class="fotos-dica" id="fotosDica">Opcional — até 3 fotos. A imagem é reduzida no próprio celular antes de enviar.</div>
+    </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('modalFinalizar')">Cancelar</button>
       <button class="btn-confirm" id="btnConfirmarFinalizar" onclick="confirmarFinalizar()">Finalizar</button>
@@ -340,6 +370,8 @@ import { collection, doc, updateDoc, query, orderBy, onSnapshot }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { db, pronto } from "./firebase.js";
 import { estadoNotificacao, ativarNotificacoes, desativarNotificacoes } from "./notificacoes.js";
+import { WORKER } from "./notificacoes.js";
+import * as fotos from "./fotos.js";
 import { esc, fmtNome, mesAtual, idSeguro, prioClasse, hashSenha, hashConfere } from "./comum.js";
 
 if (!sessionStorage.getItem('manut_logged')) window.location.href = 'login.html';
@@ -612,6 +644,63 @@ async function iniciar(docId){
 }
 window.iniciar=iniciar;
 
+// ---------------------------------------------------------------------------
+// Fotos do fechamento.
+//
+// A compressão acontece no momento em que a pessoa escolhe a foto, não no
+// envio: assim ela já vê o tamanho final na miniatura, e o "Finalizar" não
+// trava processando três imagens de uma vez.
+// ---------------------------------------------------------------------------
+let fotosPendentes = [];   // { blob, previa }
+
+function pintarFotos() {
+  const lista = document.getElementById('fotosLista');
+  lista.innerHTML = fotosPendentes.map((f, i) => `
+    <div class="foto-item">
+      <img src="${f.previa}" alt="foto ${i+1}">
+      <button type="button" class="foto-tirar" onclick="removerFoto(${i})" title="Remover">×</button>
+      <span class="foto-peso">${fotos.emKB(f.blob)} KB</span>
+    </div>`).join('');
+
+  const cheio = fotosPendentes.length >= fotos.MAX_FOTOS;
+  document.getElementById('btnFoto').disabled = cheio;
+  document.getElementById('btnFotoTexto').textContent =
+    fotosPendentes.length === 0 ? 'Anexar foto' : (cheio ? 'Limite de 3 fotos' : 'Anexar outra');
+}
+
+function removerFoto(i) {
+  URL.revokeObjectURL(fotosPendentes[i].previa);
+  fotosPendentes.splice(i, 1);
+  pintarFotos();
+}
+window.removerFoto = removerFoto;
+
+function limparFotos() {
+  fotosPendentes.forEach(f => URL.revokeObjectURL(f.previa));
+  fotosPendentes = [];
+  document.getElementById('fotoInput').value = '';
+  pintarFotos();
+}
+
+document.getElementById('fotoInput').addEventListener('change', async (e) => {
+  const escolhidas = [...e.target.files].slice(0, fotos.MAX_FOTOS - fotosPendentes.length);
+  e.target.value = '';                       // permite escolher a mesma foto de novo
+  if (!escolhidas.length) return;
+
+  const dica = document.getElementById('fotosDica');
+  dica.textContent = 'Processando...';
+  for (const arquivo of escolhidas) {
+    try {
+      const blob = await fotos.comprimir(arquivo);
+      fotosPendentes.push({ blob, previa: URL.createObjectURL(blob) });
+      pintarFotos();
+    } catch (err) {
+      showToast(err.message || 'Não consegui processar essa imagem.', 'error');
+    }
+  }
+  dica.textContent = 'Opcional — até 3 fotos. A imagem é reduzida no próprio celular antes de enviar.';
+});
+
 function abrirFinalizar(docId){
   const t=allTickets.find(x=>x._docId===docId);
   if(!t) return;
@@ -619,6 +708,7 @@ function abrirFinalizar(docId){
   // textContent, não innerHTML: nome de pessoa nunca vira marcação.
   document.getElementById('modalFinalizarSub').textContent=`${t.id} — ${t.lider||''}`;
   document.getElementById('solucaoInput').value='';
+  limparFotos();
   document.getElementById('btnConfirmarFinalizar').disabled=false;
   document.getElementById('btnConfirmarFinalizar').textContent='Finalizar';
   document.getElementById('modalFinalizar').classList.add('open');
@@ -629,13 +719,28 @@ async function confirmarFinalizar(){
   const sol=document.getElementById('solucaoInput').value.trim();
   if(!sol){alert('Descreva o que foi feito.');return;}
   const btn=document.getElementById('btnConfirmarFinalizar');
-  btn.disabled=true; btn.textContent='Salvando...';
+  btn.disabled=true;
   try {
-    await updateDoc(doc(db,'chamados',finalizingId),{status:'Finalizado',solucao:sol,dataFim:new Date().toISOString(),tecnicoFim:TECNICO});
+    // As fotos sobem ANTES de gravar, e o chamado é fechado numa escrita só com
+    // os endereços dentro. Se o envio falhar, o chamado continua em andamento e
+    // a pessoa tenta de novo — em vez de ficar finalizado com foto faltando.
+    const enderecos = [];
+    for (let i = 0; i < fotosPendentes.length; i++) {
+      btn.textContent = `Enviando foto ${i+1} de ${fotosPendentes.length}...`;
+      enderecos.push(await fotos.enviar(WORKER, fotosPendentes[i].blob, finalizingId));
+    }
+
+    btn.textContent='Salvando...';
+    const dados = { status:'Finalizado', solucao:sol, dataFim:new Date().toISOString(), tecnicoFim:TECNICO };
+    if (enderecos.length) dados.fotos = enderecos;
+    await updateDoc(doc(db,'chamados',finalizingId), dados);
+
+    limparFotos();
     closeModal('modalFinalizar');
     showToast('✅ Chamado finalizado por '+TECNICO+'!');
   } catch(e){
-    showToast('❌ Erro ao finalizar.','error');
+    console.error(e);
+    showToast('❌ ' + (e.message || 'Erro ao finalizar.'), 'error');
     btn.disabled=false; btn.textContent='Finalizar';
   }
 }
@@ -688,6 +793,12 @@ async function confirmarCancelamento(){
 }
 window.confirmarCancelamento=confirmarCancelamento;
 
+// O campo vem do banco; banco é dado, não instrução. Sem esta checagem, um
+// endereço plantado faria o painel buscar imagem num servidor de terceiro.
+function enderecoDeFotoValido(u) {
+  return typeof u === 'string' && u.startsWith(WORKER + '/fotos/');
+}
+
 function verDetalhes(docId){
   const t=allTickets.find(x=>x._docId===docId);
   if(!t) return;
@@ -718,6 +829,12 @@ function verDetalhes(docId){
     ${t.solucao?`<div style="background:rgba(74,222,128,0.05);border:1px solid rgba(74,222,128,0.18);border-radius:10px;padding:14px;margin-bottom:10px">
       <div style="font-size:10px;color:var(--green);font-family:var(--mono);letter-spacing:.08em;margin-bottom:8px">✅ SOLUÇÃO APLICADA</div>
       <div style="font-size:13px;color:var(--text);line-height:1.7;white-space:pre-wrap">${esc(t.solucao)}</div>
+    </div>`:''}
+    ${Array.isArray(t.fotos)&&t.fotos.length?`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px">
+      <div style="font-size:10px;color:var(--text3);font-family:var(--mono);letter-spacing:.08em;margin-bottom:8px">📷 FOTOS DO ATENDIMENTO</div>
+      <div class="det-fotos">${t.fotos.filter(enderecoDeFotoValido).map((u,i)=>
+        `<a href="${esc(u)}" target="_blank" rel="noopener" title="Abrir foto ${i+1} em tamanho real"><img src="${esc(u)}" alt="Foto ${i+1} do chamado" loading="lazy"></a>`
+      ).join('')}</div>
     </div>`:''}
     ${t.status==='Cancelado'?`<div style="background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.18);border-radius:10px;padding:14px;margin-bottom:10px">
       <div style="font-size:10px;color:#f87171;font-family:var(--mono);letter-spacing:.08em;margin-bottom:6px">🗑️ CANCELADO</div>

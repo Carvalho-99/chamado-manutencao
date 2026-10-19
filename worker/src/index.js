@@ -140,7 +140,7 @@ async function tokenFirebase(env) {
   return d.idToken;
 }
 
-async function lerChamadoFirestore(env, docId) {
+async function lerChamadoFirestore(env, docId, comFotos) {
   const token = await tokenFirebase(env);
   const r = await fetch(
     `https://firestore.googleapis.com/v1/projects/${env.PROJETO_FIREBASE}` +
@@ -152,8 +152,31 @@ async function lerChamadoFirestore(env, docId) {
   return {
     id: txt('id'), lider: txt('lider'), setor: txt('setor'), maquina: txt('maquina'),
     observacao: txt('observacao'), status: txt('status'), dataCriacao: txt('dataCriacao'),
-    prioridade: Number((campos.prioridade && campos.prioridade.integerValue) || 0)
+    prioridade: Number((campos.prioridade && campos.prioridade.integerValue) || 0),
+    fotos: comFotos ? (((campos.fotos || {}).arrayValue || {}).values || []).length : 0
   };
+}
+
+// ---------------------------------------------------------------------------
+// Fotos do atendimento.
+//
+// O envio é amarrado a um chamado REALMENTE em andamento: sem isso a rota
+// ficaria aberta a quem souber o endereço, e daria pra encher o armazenamento.
+// O sistema atual não tem sessão no servidor, então o chamado aberto é a prova
+// de que o pedido veio de um atendimento de verdade.
+// ---------------------------------------------------------------------------
+const FOTO_LIMITE = 2 * 1024 * 1024;      // já chega comprimida (~280 KB)
+const FOTO_MAX_POR_CHAMADO = 3;
+
+// Confere a assinatura do arquivo, não o content-type: cabeçalho é o que o
+// cliente diz ser, os primeiros bytes são o que o arquivo é.
+function pareceJpeg(bytes) {
+  return bytes.length > 3 && bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF;
+}
+
+function idDeFoto() {
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  return [...b].map(x => x.toString(16).padStart(2, '0')).join('');
 }
 
 // ---------------------------------------------------------------------------
@@ -274,6 +297,48 @@ export default {
 
       await env.INSCRICOES.put('feito:' + docId, '1', { expirationTtl: 86400 });
       return json({ ok: true, ...await avisarCelulares(env, c) }, 200, origem);
+    }
+
+    // ---- servir uma foto ----
+    if (rota.startsWith('/fotos/') && request.method === 'GET') {
+      if (!env.FOTOS) return new Response('armazenamento indisponível', { status: 503 });
+      const chave = rota.slice('/fotos/'.length);
+      if (!/^[0-9a-f]{32}\.jpg$/.test(chave)) return new Response('não encontrado', { status: 404 });
+      const obj = await env.FOTOS.get(chave);
+      if (!obj) return new Response('não encontrado', { status: 404 });
+      return new Response(obj.body, {
+        headers: {
+          'Content-Type': 'image/jpeg',
+          // A foto nunca muda depois de enviada: cache longo evita baixar de
+          // novo toda vez que alguém reabre o chamado.
+          'Cache-Control': 'public, max-age=31536000, immutable',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
+    }
+
+    // ---- receber uma foto ----
+    if (rota === '/fotos' && request.method === 'POST') {
+      if (!env.FOTOS) return json({ erro: 'armazenamento de fotos ainda não configurado' }, 503, origem);
+
+      const docId = url.searchParams.get('chamado') || '';
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(docId)) return json({ erro: 'chamado inválido' }, 400, origem);
+
+      // Só aceita foto de chamado que está sendo atendido agora.
+      const c = await lerChamadoFirestore(env, docId, true);
+      if (!c)                          return json({ erro: 'chamado não encontrado' }, 404, origem);
+      if (c.status !== 'Em andamento') return json({ erro: 'esse chamado não está em atendimento' }, 409, origem);
+      if ((c.fotos || 0) >= FOTO_MAX_POR_CHAMADO) return json({ erro: 'limite de fotos atingido' }, 409, origem);
+
+      const bytes = new Uint8Array(await request.arrayBuffer());
+      if (bytes.length === 0)             return json({ erro: 'arquivo vazio' }, 400, origem);
+      if (bytes.length > FOTO_LIMITE)     return json({ erro: 'imagem grande demais' }, 413, origem);
+      if (!pareceJpeg(bytes))             return json({ erro: 'só aceito imagem JPEG' }, 415, origem);
+
+      const chave = idDeFoto() + '.jpg';
+      await env.FOTOS.put(chave, bytes, { httpMetadata: { contentType: 'image/jpeg' } });
+      console.log('foto recebida', chave, bytes.length, 'bytes, chamado', c.id);
+      return json({ url: new URL(request.url).origin + '/fotos/' + chave }, 200, origem);
     }
 
     if (rota === '/testar' && request.method === 'POST') {
