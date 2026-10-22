@@ -198,12 +198,21 @@
   window.login = login;
 </script>
 <script type="module">
-  import { collection, query, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { collection, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
   import { db, pronto } from "./firebase.js";
 
 
   pronto.then(() => {
-  const q = query(collection(db, 'chamados'));
+  // Só os pendentes, não a coleção inteira.
+  //
+  // Esta tela mostra apenas dois números, mas lia TODOS os chamados pra chegar
+  // neles — e roda antes do login, em toda visita. Com 378 chamados eram 378
+  // leituras por abertura; a cota gratuita do Firebase é 50 mil por dia, então
+  // só esta tela conseguia esgotar o dia inteiro sozinha. Quando a cota acaba,
+  // o banco para de responder até a meia-noite do Pacífico (04:00 em Brasília).
+  //
+  // Filtrando, são as 2 a 6 linhas que realmente interessam.
+  const q = query(collection(db, 'chamados'), where('status', 'in', ['Aberto', 'Em andamento']));
   onSnapshot(q, (snap) => {
     const tickets = snap.docs.map(d => d.data());
     const aberto = tickets.filter(x => x.status === 'Aberto').length;

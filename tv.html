@@ -191,7 +191,7 @@
 <footer>Manutenção © 2026 — Atualização automática em tempo real</footer>
 
 <script type="module">
-import { collection, query, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { collection, query, where, onSnapshot, getCountFromServer } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { db, pronto } from "./firebase.js";
 import { esc, fmtNome, mesAtual } from "./comum.js";
 
@@ -238,16 +238,32 @@ function renderTicketGrid(tickets) {
 
 // A TV fica ligada dias seguidos: se a sessão cair, ela se reconecta sozinha
 // em vez de congelar num número velho sem ninguém perceber.
+// O contador de finalizados do mês usa consulta de CONTAGEM: o servidor devolve
+// só o número, custando 1 leitura em vez de uma por chamado. Não precisa ser ao
+// vivo — é um totalizador, atualizar de 5 em 5 minutos basta.
+async function atualizarFinalizados() {
+  try {
+    const r = await getCountFromServer(
+      query(collection(db, 'chamados'), where('mes', '==', mes), where('status', '==', 'Finalizado')));
+    document.getElementById('numFinalizado').textContent = r.data().count;
+  } catch (e) {
+    console.warn('não consegui contar os finalizados:', e.message);
+  }
+}
+
 pronto.then(() => {
-const q = query(collection(db, 'chamados'));
+// Só os pendentes. Esta TV fica ligada o dia inteiro: lendo a coleção toda, ela
+// sozinha consumia centenas de leituras a cada reconexão. São as 2 a 6 linhas
+// que a tela de fato mostra.
+const q = query(collection(db, 'chamados'), where('status', 'in', ['Aberto', 'Em andamento']));
+atualizarFinalizados();
+setInterval(atualizarFinalizados, 5 * 60 * 1000);
 onSnapshot(q, (snap) => {
   const tickets = snap.docs.map(d => d.data());
   const aberto = tickets.filter(x => x.status === 'Aberto').length;
   const andamento = tickets.filter(x => x.status === 'Em andamento').length;
-  const finalizado = tickets.filter(x => x.status === 'Finalizado' && x.mes === mes).length;
   document.getElementById('numAberto').textContent = aberto;
   document.getElementById('numAndamento').textContent = andamento;
-  document.getElementById('numFinalizado').textContent = finalizado;
   renderTicketGrid(tickets);
 }, err => {
   console.error('Firebase error:', err);
