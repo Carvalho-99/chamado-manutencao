@@ -76,16 +76,6 @@
       <label>Técnico</label>
       <select id="tecnico">
         <option value="">Selecione...</option>
-        <option>AMARILDO SILVA</option>
-        <option>CLEYTON MOREIRA</option>
-        <option>VITTOR LODONHO</option>
-        <option>ALESSANDRO RODRIGUES</option>
-        <option>MATHEUS OLIVEIRA</option>
-        <option>JOSUEL OLIVEIRA</option>
-        <option>PAULO HENRIQUE</option>
-        <option>MARCIO ALMEIDA</option>
-        <option>RODRIGO FERREIRA</option>
-        <option>KAUA PEDROSO</option>
         <option value="Outros">Outros</option>
       </select>
     </div>
@@ -101,94 +91,88 @@
   </div>
 </div>
 <script type="module">
-  import { hashSenha, hashConfere } from './comum.js';
+  import { hashSenha } from './comum.js';
+  import { WORKER } from './notificacoes.js';
 
-  const tecnicoSel     = document.getElementById('tecnico');
+  // A lista de quem pode entrar e a conferencia da senha vivem no servidor.
+  //
+  // Antes ficavam aqui dentro, em hash: funcionava, mas so dava pra mudar
+  // republicando o site. Agora o Paulo Henrique e o Marcio cadastram e removem
+  // gente pela aba Usuarios do painel, e isso vale na hora.
+  //
+  // Efeito colateral bom: nem o hash das senhas sai mais no codigo-fonte.
+
+  const PAPEL = 'tecnico';
+  const sel  = document.getElementById('tecnico');
   const campoOutroNome = document.getElementById('campoOutroNome');
-  const btn            = document.getElementById('btnEntrar');
+  const btn  = document.getElementById('btnEntrar');
 
-  tecnicoSel.addEventListener('change', () => {
-    campoOutroNome.style.display = tecnicoSel.value === 'Outros' ? 'block' : 'none';
+  sel.addEventListener('change', () => {
+    campoOutroNome.style.display = sel.value === 'Outros' ? 'block' : 'none';
   });
-
   document.addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
 
-  // ==========================================================
-  // SENHAS DOS TÉCNICOS
-  // A senha continua sendo o CPF (só números), mas aqui fica guardado apenas o
-  // hash dele — o CPF não aparece mais no código-fonte da página.
-  // Pra cadastrar alguém novo:
-  //   node ferramentas/gerar-hash.js "NOME DA PESSOA" 00000000000
-  // e lembre de adicionar também o <option> com o nome no <select> acima.
-  // ==========================================================
-  const USUARIOS = {
-    'AMARILDO SILVA':        '0788150cb4effa4ad3fdeac61b93e3d63eccf7d5e794deed2f8833bd7e6c6673',
-    'CLEYTON MOREIRA':       'd3e1a0a6d6d9cee270bc97d4cbd2acd7b0ff3b85e5ef941fb3948f23f7a8ebb4',
-    'VITTOR LODONHO':        'c735205ac4e2c213aaa0e985e93770852927fe8a2de6fdd30bf3b1426dc08101',
-    'ALESSANDRO RODRIGUES':  'b4832a23f3b5b471398e090f3b30c52d30776da73b2fd48c2de74c1f6d56ae10',
-    'MATHEUS OLIVEIRA':      '81b386cf289d81960afc886715d4f5eef642c56f53b644fcedb2e8513501e103',
-    'JOSUEL OLIVEIRA':       '2612d75bdd9f472347fdc45605576b8715533841be189d629d1a3ca1101e869d',
-    'PAULO HENRIQUE':        'd35064373f68799cbc277f9b59f0344b7592f91e72d69b54f190d5dba35b4797',
-    'MARCIO ALMEIDA':        '021cadb0f1e4a815942b195971af520812485be6dfe0a5761a604e9fdca53d91',
-    'RODRIGO FERREIRA':      '9d60d91d6dd1126f9ce1f203d5094c7437117d73de16e56c4ddd483e52e969fc',
-    'KAUA PEDROSO':          '4a414f524e657a1ddea40bf98bc5895eb01cabbeb8e445839d37ea3e706fb4d0'
-  };
-
-  // Senha de quem entra por "Outros" (hoje: chamadomanutencao@).
-  // Pra trocar: node ferramentas/gerar-hash.js "OUTROS-TECNICO" NovaSenha
-  const HASH_OUTROS = '0eb0285d2f6a0bc0a37a8d8583c7b4955bfa4925ceb83a70a50f54af7c1f7f06';
-
-  const MSG_ERRO_PADRAO = 'Técnico ou senha incorretos.';
-
-  function erro(msg, ms = 3000) {
+  function erro(msg, ms = 3500) {
     const el = document.getElementById('errorMsg');
     el.textContent = '⚠️ ' + msg;
     el.classList.add('show');
     setTimeout(() => el.classList.remove('show'), ms);
   }
 
-  function entrar(nome) {
-    sessionStorage.setItem('manut_logged', '1');
-    sessionStorage.setItem('manut_tecnico', nome);
-    window.location.href = 'admin.html';
-  }
+  // ---- nomes vem do servidor ----
+  (async () => {
+    try {
+      const r = await fetch(WORKER + '/api/pessoas');
+      if (!r.ok) throw new Error('servidor indisponivel');
+      const nomes = (await r.json())['tecnicos'] || [];
+      const outros = sel.querySelector('option[value="Outros"]');
+      nomes.forEach(n => {
+        const o = document.createElement('option');
+        o.textContent = n;
+        sel.insertBefore(o, outros);
+      });
+    } catch (e) {
+      // Sem a lista a pessoa ainda consegue entrar por "Outros", entao avisamos
+      // em vez de deixar a tela parecer vazia e quebrada.
+      console.error(e);
+      erro('Nao consegui carregar a lista de nomes. Tente de novo em instantes.', 6000);
+    }
+  })();
 
-  let verificando = false;
+  let ocupado = false;
 
   async function login() {
-    if (verificando) return;          // o hash demora ~1s; evita duplo clique
-    const t = tecnicoSel.value;
-    const s = document.getElementById('senha').value;
+    if (ocupado) return;
+    const nome = sel.value;
+    if (!nome) { erro('Selecione seu nome.'); return; }
 
-    verificando = true;
-    btn.disabled = true;
-    btn.textContent = 'Verificando...';
+    const senha = document.getElementById('senha').value;
+    const nomeExterno = document.getElementById('tecnicoOutroNome').value.trim();
+    if (nome === 'Outros' && !nomeExterno) { erro('Digite seu nome.'); return; }
+
+    ocupado = true; btn.disabled = true; btn.textContent = 'Verificando...';
     try {
-      if (t === 'Outros') {
-        const nome = document.getElementById('tecnicoOutroNome').value.trim().toUpperCase();
-        const jaCadastrado = Object.keys(USUARIOS).some(c => c.toUpperCase() === nome);
-        if (jaCadastrado) {
-          erro('Esse nome já está cadastrado — selecione ele na lista e entre com a senha dele.', 4000);
-          return;
-        }
-        if (nome && hashConfere(await hashSenha(s, 'OUTROS-TECNICO'), HASH_OUTROS)) {
-          entrar(nome + ' (externo)');
-          return;
-        }
-      } else if (t && USUARIOS[t] && hashConfere(await hashSenha(s, t), USUARIOS[t])) {
-        entrar(t);
-        return;
-      }
-      erro(MSG_ERRO_PADRAO);
+      // O calculo pesado continua no aparelho da pessoa; o servidor confere.
+      const rotulo = nome === 'Outros' ? 'OUTROS-TECNICO' : nome;
+      const senhaHash = await hashSenha(senha, rotulo);
+
+      const r = await fetch(WORKER + '/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ papel: PAPEL, nome, senhaHash, nomeExterno })
+      });
+      const d = await r.json();
+      if (!r.ok || d.erro) { erro(d.erro || 'Nao foi possivel entrar.'); return; }
+
+      sessionStorage.setItem('manut_logged', '1');
+      sessionStorage.setItem('manut_tecnico', d.nome);
+      sessionStorage.setItem('manut_token', d.token);
+      window.location.href = 'admin.html';
     } catch (e) {
-      // Tablet com WebView antigo pode não ter crypto.subtle. Sem isto o botão
-      // só voltava ao normal e nada acontecia — impossível de diagnosticar.
       console.error(e);
-      erro('Não foi possível verificar a senha neste aparelho. Avise a TI.', 6000);
+      erro('Sem conexao com o servidor. Verifique a internet e tente de novo.', 6000);
     } finally {
-      verificando = false;
-      btn.disabled = false;
-      btn.textContent = 'Entrar no painel';
+      ocupado = false; btn.disabled = false; btn.textContent = 'Entrar no painel';
     }
   }
   window.login = login;

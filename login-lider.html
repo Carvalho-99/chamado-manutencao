@@ -66,15 +66,6 @@
       <label>Líder</label>
       <select id="lider">
         <option value="">Selecione...</option>
-        <option>FERNANDO BETIM</option>
-        <option>SAMUEL LIMA</option>
-        <option>JOVENIL SILVA</option>
-        <option>ARGEU CARVALHO</option>
-        <option>PAULO CUNHA</option>
-        <option>PAULO HENRIQUE</option>
-        <option>MARCIO ALMEIDA</option>
-        <option>ANTONIO SANTOS</option>
-        <option>RODRIGO FERREIRA</option>
         <option value="Outros">Outros</option>
       </select>
     </div>
@@ -90,93 +81,88 @@
   </div>
 </div>
 <script type="module">
-  import { hashSenha, hashConfere } from './comum.js';
+  import { hashSenha } from './comum.js';
+  import { WORKER } from './notificacoes.js';
 
-  const liderSel      = document.getElementById('lider');
+  // A lista de quem pode entrar e a conferencia da senha vivem no servidor.
+  //
+  // Antes ficavam aqui dentro, em hash: funcionava, mas so dava pra mudar
+  // republicando o site. Agora o Paulo Henrique e o Marcio cadastram e removem
+  // gente pela aba Usuarios do painel, e isso vale na hora.
+  //
+  // Efeito colateral bom: nem o hash das senhas sai mais no codigo-fonte.
+
+  const PAPEL = 'lider';
+  const sel  = document.getElementById('lider');
   const campoOutroNome = document.getElementById('campoOutroNome');
-  const btn           = document.getElementById('btnEntrar');
+  const btn  = document.getElementById('btnEntrar');
 
-  liderSel.addEventListener('change', () => {
-    campoOutroNome.style.display = liderSel.value === 'Outros' ? 'block' : 'none';
+  sel.addEventListener('change', () => {
+    campoOutroNome.style.display = sel.value === 'Outros' ? 'block' : 'none';
   });
-
   document.addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
 
-  // ==========================================================
-  // SENHAS DOS LÍDERES
-  // A senha continua sendo o CPF (só números), mas aqui fica guardado apenas o
-  // hash dele — o CPF não aparece mais no código-fonte da página.
-  // Pra cadastrar alguém novo:
-  //   node ferramentas/gerar-hash.js "NOME DA PESSOA" 00000000000
-  // e lembre de adicionar também o <option> com o nome no <select> acima.
-  // ==========================================================
-  const USUARIOS = {
-    'FERNANDO BETIM':    '42b2a8c735f85121cbdd5cbf57688f04013ce8bdee526667fa6c3754a5abc9f9',
-    'SAMUEL LIMA':       'd8bc685ebaad78ead3c0f05ed4678ca0328141665bd437065e58a46b89fc5b93',
-    'JOVENIL SILVA':     '48c3b7fb57d261b4211f4c018ae9912fe3c4174f296c81414b2b5c38997419ad',
-    'ARGEU CARVALHO':    '55204742530e50eec0114be95a071ab9a638c789e44a13419f2e14fcc71cf741',
-    'PAULO CUNHA':       '3c748d864d0560ef0c1f68ba6f13de1960095057b352cbd7141113ae8107987a',
-    'PAULO HENRIQUE':    'd35064373f68799cbc277f9b59f0344b7592f91e72d69b54f190d5dba35b4797',
-    'ANTONIO SANTOS':    '04f73e160ccead67f4f7b65fc065f190ae8a79fc6797d58ab967d567a42efa9b',
-    'MARCIO ALMEIDA':    '021cadb0f1e4a815942b195971af520812485be6dfe0a5761a604e9fdca53d91',
-    'RODRIGO FERREIRA':  '9d60d91d6dd1126f9ce1f203d5094c7437117d73de16e56c4ddd483e52e969fc'
-  };
-
-  // Senha de quem entra por "Outros" (hoje: Forest@2026).
-  // Pra trocar: node ferramentas/gerar-hash.js "OUTROS-LIDER" NovaSenha
-  const HASH_OUTROS = '0803948f944d1250d6bf6797f838f50c52b3186a39f7aab51bc39e732e1b87c0';
-
-  const MSG_ERRO_PADRAO = 'Líder ou senha incorretos.';
-
-  function erro(msg, ms = 3000) {
+  function erro(msg, ms = 3500) {
     const el = document.getElementById('errorMsg');
     el.textContent = '⚠️ ' + msg;
     el.classList.add('show');
     setTimeout(() => el.classList.remove('show'), ms);
   }
 
-  function entrar(nome) {
-    sessionStorage.setItem('lider_logged', '1');
-    sessionStorage.setItem('lider_nome', nome);
-    window.location.href = 'index.html';
-  }
+  // ---- nomes vem do servidor ----
+  (async () => {
+    try {
+      const r = await fetch(WORKER + '/api/pessoas');
+      if (!r.ok) throw new Error('servidor indisponivel');
+      const nomes = (await r.json())['lideres'] || [];
+      const outros = sel.querySelector('option[value="Outros"]');
+      nomes.forEach(n => {
+        const o = document.createElement('option');
+        o.textContent = n;
+        sel.insertBefore(o, outros);
+      });
+    } catch (e) {
+      // Sem a lista a pessoa ainda consegue entrar por "Outros", entao avisamos
+      // em vez de deixar a tela parecer vazia e quebrada.
+      console.error(e);
+      erro('Nao consegui carregar a lista de nomes. Tente de novo em instantes.', 6000);
+    }
+  })();
 
-  let verificando = false;
+  let ocupado = false;
 
   async function login() {
-    if (verificando) return;          // o hash demora ~1s; evita duplo clique
-    const l = liderSel.value;
-    const s = document.getElementById('senha').value;
+    if (ocupado) return;
+    const nome = sel.value;
+    if (!nome) { erro('Selecione seu nome.'); return; }
 
-    verificando = true;
-    btn.disabled = true;
-    btn.textContent = 'Verificando...';
+    const senha = document.getElementById('senha').value;
+    const nomeExterno = document.getElementById('liderOutroNome').value.trim();
+    if (nome === 'Outros' && !nomeExterno) { erro('Digite seu nome.'); return; }
+
+    ocupado = true; btn.disabled = true; btn.textContent = 'Verificando...';
     try {
-      if (l === 'Outros') {
-        const nome = document.getElementById('liderOutroNome').value.trim().toUpperCase();
-        const jaCadastrado = Object.keys(USUARIOS).some(c => c.toUpperCase() === nome);
-        if (jaCadastrado) {
-          erro('Esse nome já está cadastrado — selecione ele na lista e entre com a senha dele.', 4000);
-          return;
-        }
-        if (nome && hashConfere(await hashSenha(s, 'OUTROS-LIDER'), HASH_OUTROS)) {
-          entrar(nome + ' (externo)');
-          return;
-        }
-      } else if (l && USUARIOS[l] && hashConfere(await hashSenha(s, l), USUARIOS[l])) {
-        entrar(l);
-        return;
-      }
-      erro(MSG_ERRO_PADRAO);
+      // O calculo pesado continua no aparelho da pessoa; o servidor confere.
+      const rotulo = nome === 'Outros' ? 'OUTROS-LIDER' : nome;
+      const senhaHash = await hashSenha(senha, rotulo);
+
+      const r = await fetch(WORKER + '/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ papel: PAPEL, nome, senhaHash, nomeExterno })
+      });
+      const d = await r.json();
+      if (!r.ok || d.erro) { erro(d.erro || 'Nao foi possivel entrar.'); return; }
+
+      sessionStorage.setItem('lider_logged', '1');
+      sessionStorage.setItem('lider_nome', d.nome);
+      sessionStorage.setItem('lider_token', d.token);
+      window.location.href = 'index.html';
     } catch (e) {
-      // Tablet com WebView antigo pode não ter crypto.subtle. Sem isto o botão
-      // só voltava ao normal e nada acontecia — impossível de diagnosticar.
       console.error(e);
-      erro('Não foi possível verificar a senha neste aparelho. Avise a TI.', 6000);
+      erro('Sem conexao com o servidor. Verifique a internet e tente de novo.', 6000);
     } finally {
-      verificando = false;
-      btn.disabled = false;
-      btn.textContent = 'Entrar e abrir chamado';
+      ocupado = false; btn.disabled = false; btn.textContent = 'Entrar e abrir chamado';
     }
   }
   window.login = login;

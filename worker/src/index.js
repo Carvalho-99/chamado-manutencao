@@ -14,6 +14,7 @@
 import { buildPushPayload } from '@block65/webcrypto-web-push';
 import { login, logout, sessaoDe, limparSessoesVencidas } from './auth.js';
 import * as chamados from './chamados.js';
+import * as usuarios from './usuarios.js';
 
 export { TempoReal } from './tempo-real.js';
 
@@ -40,6 +41,16 @@ const json = (dados, status, origem) =>
 async function sha256hex(texto) {
   const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(texto));
   return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
+}
+
+// Quem é administrador vem SEMPRE do banco, nunca do que a tela afirma: o
+// navegador é território hostil, e "sou admin" é fácil de escrever lá.
+async function ehAdmin(env, sessao) {
+  if (!sessao || sessao.externo) return false;
+  const u = await env.DB.prepare(
+    'SELECT eh_admin FROM usuarios WHERE nome = ? AND ativo = 1'
+  ).bind(sessao.nome).first();
+  return !!(u && u.eh_admin);
 }
 
 // ---------------------------------------------------------------------------
@@ -238,7 +249,27 @@ export default {
     }
 
     if (rota === '/api/eu') {
-      return json({ nome: sessao.nome, papel: sessao.papel, externo: sessao.externo }, 200, origem);
+      return json({ nome: sessao.nome, papel: sessao.papel, externo: sessao.externo,
+                    admin: await ehAdmin(env, sessao) }, 200, origem);
+    }
+
+    // ---- gerenciamento de usuários: só administrador ----
+    if (rota.startsWith('/api/usuarios')) {
+      if (!await ehAdmin(env, sessao)) {
+        return json({ erro: 'só administrador pode gerenciar usuários' }, 403, origem);
+      }
+      if (rota === '/api/usuarios' && request.method === 'GET') {
+        return json({ usuarios: await usuarios.listar(env) }, 200, origem);
+      }
+      if (rota === '/api/usuarios' && request.method === 'POST') {
+        const r = await usuarios.salvar(env, sessao, corpo);
+        return json(r, r.erro ? (r.status || 400) : 200, origem);
+      }
+      if (rota === '/api/usuarios/remover' && request.method === 'POST') {
+        const r = await usuarios.remover(env, sessao, corpo);
+        return json(r, r.erro ? (r.status || 400) : 200, origem);
+      }
+      return json({ erro: 'rota desconhecida' }, 404, origem);
     }
 
     if (rota === '/api/chamados' && request.method === 'GET') {

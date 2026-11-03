@@ -146,6 +146,24 @@
   .btn-confirm:hover { background: #22c55e; }
   .btn-confirm:disabled { opacity: 0.6; cursor: not-allowed; }
 
+  .u-form { display: grid; grid-template-columns: 2fr 1.3fr auto; gap: 10px; align-items: end;
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 18px; }
+  .u-form label { display: block; font-size: 11px; color: var(--text2); margin-bottom: 5px; }
+  .u-form input { width: 100%; background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 11px; font-family: var(--sans); font-size: 14px; color: var(--text); outline: none; }
+  .u-form input:focus { border-color: var(--accent); }
+  .u-papeis { display: flex; gap: 14px; margin-top: 10px; grid-column: 1 / -1; flex-wrap: wrap; }
+  .u-papeis label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text2);
+    margin: 0; cursor: pointer; }
+  .u-papeis input { width: auto; }
+  .btn-salvar { padding: 9px 20px; border: none; border-radius: 8px; background: var(--accent);
+    color: #0A252A; font-family: var(--sans); font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+  .btn-salvar:disabled { opacity: .5; cursor: not-allowed; }
+  .u-aviso { font-size: 11px; color: var(--text3); grid-column: 1 / -1; margin-top: -4px; }
+  .u-inativo td { opacity: .45; }
+  .tag-adm { background: rgba(193,180,238,.15); color: #C1B4EE; border: 1px solid rgba(193,180,238,.3);
+    font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 9px; }
+  @media (max-width: 700px) { .u-form { grid-template-columns: 1fr; } }
   .fotos-area { margin: -8px 0 16px; }
   .btn-foto { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px;
     background: rgba(197,242,73,0.08); border: 1px dashed rgba(197,242,73,0.35); border-radius: 9px;
@@ -238,6 +256,9 @@
     <div class="nav-item" onclick="location.href='tv.html'">
       <span class="icon">📺</span> Painel TV
     </div>
+    <div class="nav-item" onclick="showPanel('usuarios')" id="nav-usuarios" style="display:none">
+      <span class="icon">👥</span> Usuários
+    </div>
     <div class="nav-item" id="nav-notif" onclick="alternarNotificacao()" title="Receber aviso no celular quando abrir chamado">
       <span class="icon" id="notif-icone">🔔</span> <span id="notif-texto">Notificações</span>
     </div>
@@ -309,6 +330,35 @@
         </div>
       </div>
       <div class="table-wrap"><table><thead><tr><th>ID</th><th>Status</th><th>Líder / Setor</th><th>Máquina</th><th>Prioridade</th><th>Solução</th><th>Técnico</th><th>Data Fim</th><th>T. espera</th><th>T. andamento</th><th>Mês</th><th></th></tr></thead><tbody id="histTable"></tbody></table></div>
+    </div>
+
+    <div class="panel" id="panel-usuarios">
+      <div class="panel-header"><div class="panel-title">👥 Usuários do Sistema</div></div>
+      <div style="padding:20px 22px">
+        <div class="u-form">
+          <div>
+            <label>Nome completo</label>
+            <input type="text" id="uNome" placeholder="NOME DA PESSOA" autocomplete="off">
+          </div>
+          <div>
+            <label>CPF (será a senha)</label>
+            <input type="text" id="uCpf" placeholder="000.000.000-00" inputmode="numeric" autocomplete="off">
+          </div>
+          <button class="btn-salvar" id="uBtn" onclick="salvarUsuario()">Cadastrar</button>
+          <div class="u-papeis">
+            <label><input type="checkbox" id="uLider"> Abre chamado (líder)</label>
+            <label><input type="checkbox" id="uTecnico" checked> Atende chamado (técnico)</label>
+            <label><input type="checkbox" id="uAdmin"> Administra usuários</label>
+          </div>
+          <div class="u-aviso">A senha é sempre o CPF, só números. Cadastrar um nome que já existe atualiza os dados dele.</div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Nome</th><th>Abre chamado</th><th>Atende</th><th>Administra</th><th></th></tr></thead>
+            <tbody id="usuariosTable"><tr><td colspan="5"><div class="loading-state">⏳ Carregando...</div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <div class="panel" id="panel-meses">
@@ -645,6 +695,110 @@ async function iniciar(docId){
 window.iniciar=iniciar;
 
 // ---------------------------------------------------------------------------
+// Usuários — só para quem administra (hoje, Paulo Henrique e Marcio Almeida).
+//
+// Quem é administrador o SERVIDOR decide, não esta tela: ela só pergunta. Se
+// alguém forçar o menu a aparecer pelo navegador, as rotas respondem 403 e a
+// lista não vem.
+// ---------------------------------------------------------------------------
+const TOKEN = sessionStorage.getItem('manut_token') || '';
+const comToken = () => ({ 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN });
+
+let souAdmin = false;
+
+async function verificarAdmin() {
+  if (!TOKEN) return;
+  try {
+    const r = await fetch(WORKER + '/api/eu', { headers: comToken() });
+    if (!r.ok) return;
+    souAdmin = !!(await r.json()).admin;
+    if (souAdmin) document.getElementById('nav-usuarios').style.display = '';
+  } catch (e) { console.warn('não consegui saber se é admin:', e.message); }
+}
+
+// Só formatação: a validação que vale é a do servidor.
+function mascaraCpf(v) {
+  const d = v.replace(/\D/g, '').slice(0, 11);
+  return d.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+}
+document.getElementById('uCpf').addEventListener('input', e => { e.target.value = mascaraCpf(e.target.value); });
+document.getElementById('uNome').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase(); });
+
+async function carregarUsuarios() {
+  const tb = document.getElementById('usuariosTable');
+  try {
+    const r = await fetch(WORKER + '/api/usuarios', { headers: comToken() });
+    if (!r.ok) throw new Error((await r.json()).erro || 'não autorizado');
+    const lista = (await r.json()).usuarios;
+    tb.innerHTML = lista.map(u => `<tr class="${u.ativo ? '' : 'u-inativo'}">
+      <td data-label="Nome"><div class="td-name">${esc(u.nome)}</div>${u.ativo ? '' : '<div class="td-sub">sem acesso</div>'}</td>
+      <td data-label="Abre chamado">${u.lider ? '✓' : '—'}</td>
+      <td data-label="Atende">${u.tecnico ? '✓' : '—'}</td>
+      <td data-label="Administra">${u.admin ? '<span class="tag-adm">ADMIN</span>' : '—'}</td>
+      <td>${u.ativo ? `<button class="btn-action btn-del" onclick="removerUsuario('${esc(u.nome).replace(/'/g, "\'")}')">✕ Remover</button>` : ''}</td>
+    </tr>`).join('');
+  } catch (e) {
+    tb.innerHTML = `<tr><td colspan="5"><div class="loading-state" style="color:#f87171">❌ ${esc(e.message)}</div></td></tr>`;
+  }
+}
+window.carregarUsuarios = carregarUsuarios;
+
+async function salvarUsuario() {
+  const nome = document.getElementById('uNome').value.trim().toUpperCase();
+  const cpf  = document.getElementById('uCpf').value.replace(/\D/g, '');
+  const btn  = document.getElementById('uBtn');
+
+  if (nome.length < 3) { showToast('Informe o nome completo.', 'error'); return; }
+  if (cpf.length !== 11) { showToast('O CPF precisa ter 11 números.', 'error'); return; }
+
+  btn.disabled = true; btn.textContent = 'Salvando...';
+  try {
+    // O cálculo pesado roda aqui, no aparelho de quem cadastra. O CPF vai junto
+    // só para o servidor conferir o dígito verificador — ele não guarda o CPF.
+    const senhaHash = await hashSenha(cpf, nome);
+    const r = await fetch(WORKER + '/api/usuarios', {
+      method: 'POST', headers: comToken(),
+      body: JSON.stringify({ nome, cpf, senhaHash,
+        lider:   document.getElementById('uLider').checked,
+        tecnico: document.getElementById('uTecnico').checked,
+        admin:   document.getElementById('uAdmin').checked })
+    });
+    const d = await r.json();
+    if (!r.ok || d.erro) { showToast(d.erro || 'Não consegui salvar.', 'error'); return; }
+
+    showToast(d.novo ? `✅ ${d.nome} cadastrado.` : `✅ ${d.nome} atualizado.`);
+    document.getElementById('uNome').value = '';
+    document.getElementById('uCpf').value = '';
+    carregarUsuarios();
+  } catch (e) {
+    showToast('Erro de conexão ao salvar.', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Cadastrar';
+  }
+}
+window.salvarUsuario = salvarUsuario;
+
+async function removerUsuario(nome) {
+  if (!confirm(`Tirar o acesso de ${nome}?
+
+Os chamados que essa pessoa atendeu continuam no histórico com o nome dela.`)) return;
+  try {
+    const r = await fetch(WORKER + '/api/usuarios/remover', {
+      method: 'POST', headers: comToken(), body: JSON.stringify({ nome })
+    });
+    const d = await r.json();
+    if (!r.ok || d.erro) { showToast(d.erro || 'Não consegui remover.', 'error'); return; }
+    showToast(`Acesso de ${nome} removido.`);
+    carregarUsuarios();
+  } catch (e) {
+    showToast('Erro de conexão ao remover.', 'error');
+  }
+}
+window.removerUsuario = removerUsuario;
+
+verificarAdmin();
+
+// ---------------------------------------------------------------------------
 // Fotos do fechamento.
 //
 // A compressão acontece no momento em que a pessoa escolhe a foto, não no
@@ -876,15 +1030,16 @@ function exportCSV(){
 window.exportCSV=exportCSV;
 
 function showPanel(name){
-  ['tickets','andamento','historico','meses'].forEach(p=>{
+  ['tickets','andamento','historico','meses','usuarios'].forEach(p=>{
     document.getElementById('panel-'+p).classList.toggle('active',p===name);
     document.getElementById('nav-'+p).classList.toggle('active',p===name);
   });
-  const titles={tickets:'Chamados Novos',andamento:'Em Andamento',historico:'Histórico',meses:'Controle por Mês'};
+  const titles={tickets:'Chamados Novos',andamento:'Em Andamento',historico:'Histórico',meses:'Controle por Mês',usuarios:'Usuários do Sistema'};
   document.getElementById('pageTitle').textContent=titles[name];
   if(name==='historico') renderHistory();
   if(name==='andamento') renderAndamento();
   if(name==='meses')     renderMonths();
+  if(name==='usuarios')  carregarUsuarios();
 }
 window.showPanel=showPanel;
 
