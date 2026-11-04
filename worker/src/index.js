@@ -79,6 +79,23 @@ async function avisarTelas(env, tipo, chamado) {
 // 1 urgente · 2 crítico · 3 preventiva · 4 está funcionando
 const ROTULO_PRIORIDADE = { 1: '🔴 URGENTE', 2: '🟡 Crítico', 3: '🔧 Preventiva', 4: '🟢 Funcionando' };
 
+// Quando a máquina fica livre, escrito como o técnico lê no relógio da fábrica.
+// O Worker roda em UTC, então o fuso é aplicado na mão — sem isso a notificação
+// mostraria três horas à frente.
+function quandoLibera(iso) {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (isNaN(t) || t <= Date.now()) return null;   // já passou: está livre agora
+
+  const BR = -3 * 3600 * 1000;
+  const d  = new Date(t + BR);
+  const ag = new Date(Date.now() + BR);
+  const hora = String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0');
+  if (d.toISOString().slice(0, 10) === ag.toISOString().slice(0, 10)) return 'hoje ' + hora;
+  if (d.toISOString().slice(0, 10) === new Date(ag.getTime() + 86400000).toISOString().slice(0, 10)) return 'amanhã ' + hora;
+  return String(d.getUTCDate()).padStart(2, '0') + '/' + String(d.getUTCMonth() + 1).padStart(2, '0') + ' ' + hora;
+}
+
 async function enviarPara(env, inscricao, mensagem) {
   const payload = await buildPushPayload(mensagem, inscricao, {
     subject: env.VAPID_SUBJECT,
@@ -90,10 +107,16 @@ async function enviarPara(env, inscricao, mensagem) {
 
 async function avisarCelulares(env, chamado) {
   const urgente = chamado.prioridade === 1;
+  const libera = quandoLibera(chamado.disponivelEm);
+
+  // Quando a máquina só libera depois, isso vem PRIMEIRO: é a informação que
+  // decide se o técnico larga o que está fazendo e vai agora. Sem ela, ele faz
+  // a viagem à toa e só descobre chegando lá.
   const mensagem = {
     data: {
       titulo: `${ROTULO_PRIORIDADE[chamado.prioridade] || 'Chamado'} · ${chamado.maquina}`,
-      corpo: `${chamado.setor} — ${chamado.observacao}`.slice(0, 160) + `\nAberto por ${chamado.lider}`,
+      corpo: (libera ? `🕒 Liberada só ${libera}\n` : '') +
+             `${chamado.setor} — ${chamado.observacao}`.slice(0, 140) + `\nAberto por ${chamado.lider}`,
       id: chamado.id,
       prioridade: chamado.prioridade,
       url: './login.html'
@@ -163,6 +186,7 @@ async function lerChamadoFirestore(env, docId, comFotos) {
   return {
     id: txt('id'), lider: txt('lider'), setor: txt('setor'), maquina: txt('maquina'),
     observacao: txt('observacao'), status: txt('status'), dataCriacao: txt('dataCriacao'),
+    disponivelEm: txt('disponivelEm'),
     prioridade: Number((campos.prioridade && campos.prioridade.integerValue) || 0),
     fotos: comFotos ? (((campos.fotos || {}).arrayValue || {}).values || []).length : 0
   };
