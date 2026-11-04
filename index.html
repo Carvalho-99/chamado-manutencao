@@ -91,6 +91,15 @@
   /* Grade em vez de flex: com flex as caixas ficavam de larguras diferentes,
      porque cada rótulo tem um tamanho de texto. Colunas iguais resolvem, e
      o stretch deixa todas com a mesma altura mesmo quando um texto quebra. */
+  .disp-opcoes { display: flex; gap: 10px; flex-wrap: wrap; }
+  .disp-opcoes > div { flex: 1; min-width: 150px; position: relative; }
+  .disp-opcoes input[type="radio"] { position: absolute; opacity: 0; width: 0; height: 0; }
+  .disp-opcoes label { display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 13px 14px; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+    cursor: pointer; font-size: 14px; font-weight: 500; color: var(--text2); transition: all .2s; text-align: center; }
+  .disp-opcoes input:checked + label { background: rgba(197,242,73,0.08); border-color: var(--accent); color: var(--accent); }
+  .disp-opcoes label:hover { border-color: var(--border2); }
+  #disponivelEm { margin-top: 10px; }
   .prio-group { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; align-items: stretch; }
   .prio-option { position: relative; }
   .prio-option input[type="radio"] { position: absolute; opacity: 0; width: 0; height: 0; }
@@ -237,6 +246,20 @@
               </div>
             </div>
           </div>
+          <div class="field">
+            <label>Quando a máquina estará liberada para manutenção?</label>
+            <div class="disp-opcoes">
+              <div>
+                <input type="radio" name="disponibilidade" id="disp_agora" value="agora" checked>
+                <label for="disp_agora">✅ Já está liberada</label>
+              </div>
+              <div>
+                <input type="radio" name="disponibilidade" id="disp_depois" value="depois">
+                <label for="disp_depois">🕒 Vai liberar depois</label>
+              </div>
+            </div>
+            <input type="datetime-local" id="disponivelEm" style="display:none">
+          </div>
         </div>
       </div>
 
@@ -309,6 +332,25 @@ setorSel.addEventListener('change', () => {
     lista.map(m => `<option>${m}</option>`).join('') +
     '<option value="Outro">Outro (digitar)</option>';
 });
+// O campo de data só aparece quando a pessoa diz que vai liberar depois.
+// "Já liberada" é o padrão porque no chamado urgente a máquina parou agora —
+// obrigar a preencher data atrasaria justamente o caso mais crítico.
+const campoQuando = document.getElementById('disponivelEm');
+document.querySelectorAll('input[name="disponibilidade"]').forEach(r => {
+  r.addEventListener('change', () => {
+    const depois = document.getElementById('disp_depois').checked;
+    campoQuando.style.display = depois ? 'block' : 'none';
+    if (depois && !campoQuando.value) {
+      // Sugere daqui a duas horas: é o palpite mais útil e a pessoa só ajusta.
+      const d = new Date(Date.now() + 2 * 3600 * 1000);
+      d.setMinutes(0, 0, 0);
+      const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+      campoQuando.value = local.toISOString().slice(0, 16);
+    }
+    if (depois) campoQuando.focus();
+  });
+});
+
 maquinaSel.addEventListener('change', () => {
   maquinaOutro.style.display = maquinaSel.value === 'Outro' ? 'block' : 'none';
 });
@@ -348,6 +390,24 @@ document.getElementById('ticketForm').addEventListener('submit', async function(
     return;
   }
 
+  // Quando a máquina fica livre. Vazio = já está livre agora.
+  let disponivelEm = null;
+  if (document.getElementById('disp_depois').checked) {
+    const bruto = document.getElementById('disponivelEm').value;
+    if (!bruto) { alert('Informe quando a máquina vai estar liberada.'); return; }
+    const quando = new Date(bruto);
+    if (isNaN(quando)) { alert('Data de liberação inválida.'); return; }
+    // Uma folga de 5 minutos: a pessoa leva um tempo preenchendo o resto do
+    // formulário, e seria irritante o horário "vencer" enquanto ela digita.
+    if (quando.getTime() < Date.now() - 5 * 60 * 1000) {
+      alert('Essa data já passou. Confira o dia e a hora.'); return;
+    }
+    if (quando.getTime() > Date.now() + 365 * 24 * 3600 * 1000) {
+      alert('Essa data está muito longe. Confira o ano.'); return;
+    }
+    disponivelEm = quando.toISOString();
+  }
+
   btn.disabled = true;
   btn.innerHTML = '⏳ Enviando...';
   try {
@@ -358,6 +418,7 @@ document.getElementById('ticketForm').addEventListener('submit', async function(
       tipoProblema: tipoProblemaEl.value,
       observacao,
       prioridade: Number(prioridadeEl.value),
+      disponivelEm,
       status: 'Aberto',
       mes: mesAtual(),
       dataCriacao: new Date().toISOString(),
@@ -372,6 +433,8 @@ document.getElementById('ticketForm').addEventListener('submit', async function(
     const toast = document.getElementById('toast');
     toast.classList.add('show');
     this.reset();
+    document.getElementById('disponivelEm').style.display = 'none';
+    document.getElementById('disponivelEm').value = '';
     maquinaSel.innerHTML = '<option value="">Selecione o setor primeiro...</option>';
     maquinaSel.disabled = true;
     maquinaOutro.style.display = 'none';

@@ -79,7 +79,8 @@ service cloud.firestore {
           && novo().keys().hasOnly(['id', 'lider', 'setor', 'maquina', 'tipoProblema',
                                     'observacao', 'prioridade', 'status', 'mes',
                                     'dataCriacao', 'dataInicio', 'dataFim',
-                                    'tecnicoInicio', 'tecnicoFim', 'createdAt'])
+                                    'tecnicoInicio', 'tecnicoFim', 'createdAt',
+                                    'disponivelEm'])
           && novo().keys().hasAll(['id', 'lider', 'setor', 'maquina', 'tipoProblema',
                                    'observacao', 'prioridade', 'status', 'mes',
                                    'dataCriacao', 'createdAt'])
@@ -97,7 +98,9 @@ service cloud.firestore {
           && novo().dataFim       == null
           && novo().tecnicoInicio == ''
           && novo().tecnicoFim    == ''
-          && novo().createdAt     == request.time;
+          && novo().createdAt     == request.time
+          // Quando a maquina fica livre pra manutencao. Nulo = ja esta livre.
+          && (novo().disponivelEm == null || txtCheio(novo().disponivelEm, 30));
 
       allow update: if request.auth != null && (iniciar() || finalizar() || cancelar());
 

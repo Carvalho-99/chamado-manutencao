@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS chamados (
 
   mes               TEXT    NOT NULL CHECK (length(mes) = 7),   -- MM/AAAA
 
+  -- Quando a maquina fica livre pra manutencao. NULL = ja esta livre.
+  disponivel_em     TEXT,
   data_criacao      TEXT    NOT NULL,
   data_inicio       TEXT,
   data_fim          TEXT,

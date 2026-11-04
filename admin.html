@@ -302,7 +302,7 @@
           <button class="btn-refresh" onclick="loadAll()">🔄 Atualizar</button>
         </div>
       </div>
-      <div class="table-wrap"><table><thead><tr><th>ID</th><th>Líder / Setor</th><th>Máquina</th><th>Problema</th><th>Prioridade</th><th>Aguardando há</th><th>Ações</th></tr></thead><tbody id="ticketsTable"><tr><td colspan="7"><div class="loading-state">⏳ Conectando ao banco de dados...</div></td></tr></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>ID</th><th>Líder / Setor</th><th>Máquina</th><th>Problema</th><th>Prioridade</th><th>Liberada</th><th>Aguardando há</th><th>Ações</th></tr></thead><tbody id="ticketsTable"><tr><td colspan="7"><div class="loading-state">⏳ Conectando ao banco de dados...</div></td></tr></tbody></table></div>
     </div>
 
     <div class="panel" id="panel-andamento">
@@ -455,7 +455,7 @@ function loadAll() {
   }, err => {
     console.error('Firebase error:', err);
     document.getElementById('ticketsTable').innerHTML =
-      `<tr><td colspan="7"><div class="loading-state" style="color:#f87171">❌ Erro ao conectar. ${err.message}</div></td></tr>`;
+      `<tr><td colspan="8"><div class="loading-state" style="color:#f87171">❌ Erro ao conectar. ${err.message}</div></td></tr>`;
   });
 }
 window.loadAll = loadAll;
@@ -482,6 +482,23 @@ function statusClass(s) {
   if (s==='Cancelado') return 'cancelado';
   return 'finalizado';
 }
+// Quando a maquina fica livre, do ponto de vista de quem vai atender agora.
+// Mostrar "liberada" ou "so as 14h" muda a decisao do tecnico de ir ou nao.
+function liberadaEm(iso) {
+  if (!iso) return { texto: 'Agora', cor: 'var(--green)', esperando: false };
+  const quando = Date.parse(iso);
+  if (isNaN(quando)) return { texto: '—', cor: 'var(--text3)', esperando: false };
+  if (quando <= Date.now()) return { texto: 'Agora', cor: 'var(--green)', esperando: false };
+
+  const d = new Date(quando);
+  const hoje = new Date();
+  const mesmoDia = d.toDateString() === hoje.toDateString();
+  const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const amanha = new Date(hoje.getTime() + 86400000).toDateString() === d.toDateString();
+  const texto = mesmoDia ? `Hoje ${hora}` : (amanha ? `Amanhã ${hora}` : `${d.toLocaleDateString('pt-BR')} ${hora}`);
+  return { texto, cor: 'var(--purple)', esperando: true };
+}
+
 function prioLabel(p) {
   if (p===1) return '🔴 Urgente';
   if (p===2) return '🟡 Crítico';
@@ -559,13 +576,14 @@ function renderTickets() {
   if(setor)   t=t.filter(x=>x.setor===setor);
   if(maquina) t=t.filter(x=>x.maquina===maquina);
   const tbody=document.getElementById('ticketsTable');
-  if(!t.length){tbody.innerHTML=`<tr><td colspan="7"><div class="empty-state"><div class="icon">✅</div>Nenhum chamado novo aguardando</div></td></tr>`;return;}
+  if(!t.length){tbody.innerHTML=`<tr><td colspan="8"><div class="empty-state"><div class="icon">✅</div>Nenhum chamado novo aguardando</div></td></tr>`;return;}
   tbody.innerHTML=t.map(x=>`<tr>
     <td class="td-id" data-label="ID">${esc(x.id)}</td>
     <td data-label="Líder / Setor"><div class="td-name">${fmtNome(x.lider)}</div><div class="td-sub">${esc(x.setor)}</div></td>
     <td data-label="Máquina"><span style="font-size:12px">${esc(x.maquina)}</span></td>
     <td data-label="Problema"><span style="font-size:11px;color:var(--text2)">${esc(x.tipoProblema)}</span><div class="td-sub" style="max-width:200px">${esc(x.observacao)}</div></td>
     <td data-label="Prioridade"><span class="badge ${prioClasse(x.prioridade)}">${prioLabel(x.prioridade)}</span></td>
+    <td data-label="Liberada" style="font-size:12px;font-family:var(--mono);white-space:nowrap;color:${liberadaEm(x.disponivelEm).cor}">${esc(liberadaEm(x.disponivelEm).texto)}</td>
     <td data-label="Aguardando há" style="font-size:12px;color:var(--yellow);font-family:var(--mono);white-space:nowrap">${calcTempo(x.dataCriacao, null)}</td>
     <td><div class="actions">
       <button class="btn-action btn-iniciar" onclick="iniciar('${idSeguro(x._docId)}')">▶ Iniciar</button>
@@ -662,13 +680,13 @@ function selectMesAtivo(m){mesesActiveMonth=m;renderMonths();}
 window.selectMesAtivo=selectMesAtivo;
 
 function csvRows(t) {
-  const header=['ID','Status','Lider','Setor','Maquina','Tipo Problema','Observacao','Prioridade','Solucao','Tecnico Inicio','Tecnico Fim','Cancelado Por','Data Abertura','Data Inicio','Data Fim','T. Espera','T. Andamento','Mes'];
+  const header=['ID','Status','Lider','Setor','Maquina','Tipo Problema','Observacao','Prioridade','Liberada Em','Solucao','Tecnico Inicio','Tecnico Fim','Cancelado Por','Data Abertura','Data Inicio','Data Fim','T. Espera','T. Andamento','Mes'];
   // O ; separa as colunas, então ele não pode sobreviver dentro de um campo.
   const lmp=v=>String(v===null||v===undefined?'':v).replace(/[;\r\n]/g,' ').trim();
   const txt=v=>'"'+lmp(v).replace(/"/g,'""')+'"';
   const rows=t.map(x=>{
     const fim=x.status==='Cancelado'?x.dataCancelamento:x.dataFim;
-    return [lmp(x.id),lmp(x.status),txt(x.lider),lmp(x.setor),txt(x.maquina),lmp(x.tipoProblema),txt(x.observacao),Number(x.prioridade)||'',txt(x.solucao),txt(x.tecnicoInicio||'—'),txt(x.tecnicoFim||'—'),txt(x.canceladoPor||'—'),fmt(x.dataCriacao),fmt(x.dataInicio),fmt(fim),calcTempo(x.dataCriacao,x.dataInicio),calcTempo(x.dataInicio,fim),lmp(x.mes)];
+    return [lmp(x.id),lmp(x.status),txt(x.lider),lmp(x.setor),txt(x.maquina),lmp(x.tipoProblema),txt(x.observacao),Number(x.prioridade)||'',x.disponivelEm?fmt(x.disponivelEm):'Imediata',txt(x.solucao),txt(x.tecnicoInicio||'—'),txt(x.tecnicoFim||'—'),txt(x.canceladoPor||'—'),fmt(x.dataCriacao),fmt(x.dataInicio),fmt(fim),calcTempo(x.dataCriacao,x.dataInicio),calcTempo(x.dataInicio,fim),lmp(x.mes)];
   });
   return [header,...rows].map(r=>r.join(';')).join('\n');
 }
@@ -972,6 +990,10 @@ function verDetalhes(docId){
         <div style="font-size:13px;color:var(--text)">${esc(t.maquina)}</div>
       </div>
     </div>
+    ${t.disponivelEm ? `<div style="background:rgba(193,180,238,0.07);border:1px solid rgba(193,180,238,0.2);border-radius:10px;padding:12px;margin-bottom:10px">
+      <div style="font-size:10px;color:#C1B4EE;font-family:var(--mono);letter-spacing:.08em;margin-bottom:4px">🕒 MÁQUINA LIBERADA A PARTIR DE</div>
+      <div style="font-size:14px;color:var(--text);font-weight:600">${fmt(t.disponivelEm)}</div>
+    </div>` : ''}
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px">
       <div style="font-size:10px;color:var(--text3);font-family:var(--mono);letter-spacing:.08em;margin-bottom:6px">TIPO DE PROBLEMA</div>
       <span style="background:rgba(197,242,73,0.08);border:1px solid rgba(197,242,73,0.18);color:var(--accent);border-radius:6px;padding:3px 10px;font-size:12px;font-weight:600">${esc(t.tipoProblema)}</span>

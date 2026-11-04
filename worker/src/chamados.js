@@ -37,6 +37,7 @@ function paraTela(r) {
     prioridade: r.prioridade,
     status: r.status,
     mes: r.mes,
+    disponivelEm: r.disponivel_em,
     dataCriacao: r.data_criacao,
     dataInicio: r.data_inicio,
     dataFim: r.data_fim,
@@ -79,16 +80,25 @@ export async function abrir(env, sessao, corpo) {
   if (!observacao)              return { erro: 'descreva o problema', status: 400 };
   if (![1, 2, 3, 4].includes(prioridade)) return { erro: 'prioridade inválida', status: 400 };
 
+  // Quando a maquina fica livre. Vazio = ja esta livre agora.
+  let disponivelEm = null;
+  if (corpo.disponivelEm) {
+    const q = Date.parse(corpo.disponivelEm);
+    if (isNaN(q)) return { erro: 'data de liberação inválida', status: 400 };
+    if (q > Date.now() + 365 * 24 * 3600 * 1000) return { erro: 'data de liberação muito distante', status: 400 };
+    disponivelEm = new Date(q).toISOString();
+  }
+
   const agora = new Date().toISOString();
 
   // O nome de quem abriu vem da SESSÃO, nunca do que o navegador mandou.
   // É isso que impede alguém abrir chamado no nome de outra pessoa.
   const r = await env.DB.prepare(
     `INSERT INTO chamados (lider, setor, maquina, tipo_problema, observacao, prioridade,
-                           status, mes, data_criacao, criado_em)
-     VALUES (?, ?, ?, ?, ?, ?, 'Aberto', ?, ?, ?)
+                           status, mes, disponivel_em, data_criacao, criado_em)
+     VALUES (?, ?, ?, ?, ?, ?, 'Aberto', ?, ?, ?, ?)
      RETURNING *`
-  ).bind(sessao.nome, setor, maquina, tipo, observacao, prioridade, mesDe(), agora, agora).first();
+  ).bind(sessao.nome, setor, maquina, tipo, observacao, prioridade, mesDe(), disponivelEm, agora, agora).first();
 
   return { chamado: paraTela(r) };
 }
